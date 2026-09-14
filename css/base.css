@@ -1,0 +1,182 @@
+/* ==========================================================================
+   BASE LAYOUT, 3D SCENE & BACKGROUND OVERLAYS
+   ========================================================================== */
+
+#hyperspeed-canvas,
+#book-scene,
+#rune-stream,
+.aurora-overlay,
+.vignette,
+.noise-overlay {
+  position: fixed;
+  inset: 0;
+}
+
+#hyperspeed-canvas {
+  z-index: 0;
+}
+
+#book-scene {
+  z-index: 1;
+  pointer-events: none;
+  display: grid;
+  place-items: end center;
+  transform-style: preserve-3d;
+}
+
+#rune-stream {
+  z-index: 2;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.rune {
+  position: absolute;
+  bottom: 14vh;
+  right: 14vw;
+  font-family: "Space Grotesk", sans-serif;
+  color: rgba(226, 233, 244, 0.92);
+  text-shadow: 0 0 14px rgba(200, 210, 224, 0.55);
+  will-change: transform, opacity;
+  animation: runeRise var(--dur, 3.2s) linear forwards;
+}
+
+.book {
+  width: min(980px, 110vw);
+  height: min(520px, 56vh);
+  transform-style: preserve-3d;
+  transform: rotateX(63deg) rotateZ(-14deg) translate3d(0, 7vh, 0);
+  filter: drop-shadow(0 16px 46px rgba(210, 218, 230, 0.35));
+  transition: transform 0.2s ease;
+}
+
+.spine {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 20px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, rgba(20, 26, 34, 0.96), rgba(205, 214, 226, 0.58), rgba(20, 26, 34, 0.96));
+  box-shadow: 0 0 30px rgba(196, 205, 218, 0.3);
+}
+
+.pages {
+  position: absolute;
+  inset: 18px 8% 28px;
+  transform-style: preserve-3d;
+}
+
+.page {
+  position: absolute;
+  width: 78%;
+  height: 100%;
+  left: 11%;
+  bottom: 0;
+  border: 1px solid rgba(210, 218, 230, 0.3);
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 25% 18%, rgba(220, 228, 238, 0.25), transparent 40%),
+    repeating-linear-gradient(135deg, rgba(210, 220, 232, 0.06) 0 2px, transparent 2px 8px),
+    linear-gradient(150deg, rgba(17, 21, 28, 0.94), rgba(8, 10, 14, 0.86));
+  box-shadow: 0 0 24px rgba(192, 202, 214, 0.18);
+  transform-origin: bottom center;
+}
+
+.page::after {
+  content: "";
+  position: absolute;
+  inset: 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(210, 218, 230, 0.2);
+}
+
+.aurora-overlay {
+  z-index: 2;
+  pointer-events: none;
+  background:
+    radial-gradient(44% 35% at 24% 18%, rgba(210, 220, 234, 0.25), transparent 70%),
+    radial-gradient(46% 36% at 79% 72%, rgba(160, 178, 204, 0.22), transparent 72%);
+  mix-blend-mode: screen;
+  opacity: 0.3;
+  animation: auroraMove 13s ease-in-out infinite alternate;
+}
+
+.vignette {
+  z-index: 3;
+  pointer-events: none;
+  background: radial-gradient(circle at center, transparent 26%, rgba(0, 0, 0, 0.82) 100%);
+}
+
+.noise-overlay {
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0.08;
+  background-image: radial-gradient(rgba(215, 223, 235, 0.35) 0.45px, transparent 0.45px);
+  background-size: 4px 4px;
+}
+
+.app-shell {
+  position: relative;
+  z-index: 5;
+  width: 100%;
+  height: 100%;
+  perspective: 1200px;
+}
+
+.layer {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translate3d(0, 24px, 0) scale(0.985);
+  transition: opacity 0.42s ease, transform 0.42s ease, visibility 0.42s ease;
+}
+
+.layer.active {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translate3d(0, 0, 0) scale(1);
+}
+
+.panel {
+  width: min(1100px, 96vw);
+  border: 1px solid var(--line-soft);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 12% 8%, rgba(210, 218, 230, 0.06), transparent 45%),
+    linear-gradient(160deg, rgba(10, 13, 18, 0.98), rgba(6, 8, 12, 0.96));
+  box-shadow: 0 10px 40px rgba(6, 8, 12, 0.4);
+}
+
+.panel-scroll {
+  width: min(900px, 92vw);
+  min-height: min(84vh, 780px);
+  max-height: 84vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 2.4rem;
+}
+
+.panel-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.panel-scroll::-webkit-scrollbar-thumb {
+  background: rgba(204, 214, 228, 0.5);
+  border-radius: 999px;
+}
+
+.reveal {
+  opacity: 0;
+  transform: translate3d(0, 22px, 0);
+  transition: opacity 0.42s ease, transform 0.42s ease;
+}
+
+.reveal.in {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}

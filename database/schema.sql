@@ -1,0 +1,72 @@
+-- ====================================================================
+-- MONGODB DATABASE MODEL SCHEMAS
+-- Database: SIMILARITY
+-- Collections: scans, documents, similarity_results, scan_results
+-- ====================================================================
+
+-- 1. SCANS COLLECTION
+-- Stores metadata about each document similarity check session.
+-- Unique Index: { scanId: 1 }
+-- Fields:
+-- {
+--   _id: ObjectId,
+--   scanId: String,               // Unique scan session identifier
+--   status: String,               // 'queued', 'processing', 'completed', 'failed'
+--   currentStage: String,         // 'uploading', 'extracting', 'preprocessing', 'comparing', 'saving', 'completed', 'failed'
+--   totalDocuments: Number,       // N documents
+--   totalPossiblePairs: Number,   // N * (N-1) / 2
+--   candidatePairs: Number,       // Comparisons actually evaluated
+--   exactComparisons: Number,     // Pairwise comparisons run
+--   completedComparisons: Number, // Total completed pairings
+--   highSimilarityPairs: Number,  // Pairs passing threshold
+--   processingTimeMs: Number,     // Total run duration in milliseconds
+--   createdAt: Date,
+--   startedAt: Date,
+--   completedAt: Date,
+--   errorMessage: String
+-- }
+
+-- 2. DOCUMENTS COLLECTION
+-- Stores metadata about each document associated with a scan.
+-- Indexes: { scanId: 1 }, { sha256Hash: 1 }, { scanId: 1, documentId: 1 }
+-- Fields:
+-- {
+--   _id: ObjectId,
+--   scanId: String,               // References scans.scanId
+--   documentId: String,           // Unique document identifier
+--   filename: String,             // Original filename
+--   fileType: String,             // File extension (.txt, .pdf, .docx)
+--   fileSize: Number,             // File size in bytes
+--   sha256Hash: String,           // SHA-256 checksum for duplicates detection
+--   textLength: Number,           // Character length of extracted text
+--   tokenCount: Number,           // Word count of preprocessed tokens
+--   status: String,               // 'processed'
+--   createdAt: Date
+-- }
+
+-- 3. SIMILARITY RESULTS COLLECTION
+-- Stores similarity scores for document pairings passing the threshold.
+-- Indexes: { scanId: 1 }, { similarityScore: 1 }, { scanId: 1, similarityScore: -1 }, { documentAId: 1 }, { documentBId: 1 }
+-- Fields:
+-- {
+--   _id: ObjectId,
+--   scanId: String,               // References scans.scanId
+--   documentAId: String,          // References documents.documentId
+--   documentBId: String,          // References documents.documentId
+--   fileName1: String,            // Original filename A
+--   fileName2: String,            // Original filename B
+--   similarityScore: Number,      // Score between 0.0 and 1.0 (Decimal)
+--   algorithm: String,            // 'jaccard'
+--   createdAt: Date
+-- }
+
+-- 4. LEGACY SCAN RESULTS COLLECTION
+-- Caches results for backward compatibility. Used by /api/scan/history endpoint.
+-- Fields:
+-- {
+--   _id: ObjectId,
+--   file_name_1: String,
+--   file_name_2: String,
+--   similarity: Number,           // Score represented as percentage (0-100)
+--   created_at: Date
+-- }

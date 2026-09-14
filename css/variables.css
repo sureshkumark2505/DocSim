@@ -1,0 +1,31 @@
+:root {
+  --bg: #0b0e13;
+  --bg-soft: #121720;
+  --panel: rgba(255, 255, 255, 0.05);
+  --line: rgba(255, 255, 255, 0.18);
+  --line-soft: rgba(255, 255, 255, 0.1);
+  --primary: #e7ebf2;
+  --primary-strong: #c7cedb;
+  --text: #f4f6f9;
+  --text-soft: rgba(214, 222, 231, 0.78);
+  --danger: #ff7d7d;
+  --ok: #a5ffd6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-family: "Sora", sans-serif;
+  background: radial-gradient(circle at 50% 12%, #1b212c 0%, var(--bg-soft) 52%, #07080b 100%);
+}

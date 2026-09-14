@@ -1,0 +1,26 @@
+/* ==========================================================================
+   DOCSIM — MASTER STYLESHEET ENTRY POINT
+   ==========================================================================
+   This stylesheet modularizes the DocSim design system into structured,
+   readable, and maintainable domain-specific CSS files:
+
+   1. css/variables.css  - Theme variables, colors, typography tokens & resets
+   2. css/base.css       - Background canvas, 3D book scene, overlays & app shell
+   3. css/animations.css - Keyframe animations for transitions, loaders & effects
+   4. css/intro.css      - Intro gate, hero scope, title animations & feature cards
+   5. css/panels.css     - Upload panel, scanning loader, and repository views
+   6. css/dashboard.css  - Summary metrics, flat duplicates & all-file similarity
+   7. css/modals.css     - Pairwise inspection modal and scan report preview
+   8. css/responsive.css - Tablet and mobile media query overrides
+   9. css/print.css      - PDF generation and high-fidelity print stylesheet
+   ========================================================================== */
+
+@import url("./css/variables.css");
+@import url("./css/base.css");
+@import url("./css/animations.css");
+@import url("./css/intro.css");
+@import url("./css/panels.css");
+@import url("./css/dashboard.css");
+@import url("./css/modals.css");
+@import url("./css/responsive.css");
+@import url("./css/print.css");

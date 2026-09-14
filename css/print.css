@@ -1,0 +1,136 @@
+.print-only {
+  display: none;
+}
+
+@media print {
+  body, html {
+    background: #ffffff !important;
+    color: #111827 !important;
+    font-size: 10pt !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  #hyperspeed-canvas,
+  #book-scene,
+  #rune-stream,
+  .aurora-overlay,
+  .vignette,
+  .noise-overlay,
+  .no-print,
+  #documentDetailModal,
+  .panel {
+    display: none !important;
+  }
+
+  .app-shell {
+    position: static !important;
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    perspective: none !important;
+  }
+
+  .layer {
+    position: static !important;
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    padding: 0 !important;
+    transform: none !important;
+  }
+
+  .report-modal-overlay {
+    position: static !important;
+    background: none !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    display: block !important;
+    z-index: auto !important;
+  }
+
+  .report-modal-card {
+    background: #ffffff !important;
+    color: #111827 !important;
+    border: none !important;
+    box-shadow: none !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    max-height: none !important;
+    padding: 0 !important;
+    animation: none !important;
+  }
+
+  .report-modal-body {
+    padding: 0 !important;
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .report-section-title {
+    color: #111827 !important;
+    border-bottom: 1.5px solid #374151 !important;
+    font-size: 13pt !important;
+    margin-top: 18pt !important;
+    page-break-after: avoid !important;
+  }
+
+  .report-summary-grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 8pt !important;
+  }
+
+  .report-stat-card {
+    background: #f3f4f6 !important;
+    border: 1px solid #d1d5db !important;
+    color: #111827 !important;
+    padding: 8pt !important;
+  }
+
+  .report-stat-label {
+    color: #4b5563 !important;
+    font-size: 8pt !important;
+  }
+
+  .report-stat-val {
+    color: #111827 !important;
+    font-size: 13pt !important;
+  }
+
+  .report-table-wrap {
+    max-height: none !important;
+    overflow: visible !important;
+    border: 1px solid #d1d5db !important;
+  }
+
+  .report-table {
+    border: 1px solid #d1d5db !important;
+  }
+
+  .report-table th {
+    background: #e5e7eb !important;
+    color: #111827 !important;
+    border-bottom: 1.5px solid #9ca3af !important;
+    font-size: 9pt !important;
+  }
+
+  .report-table td {
+    border-bottom: 1px solid #e5e7eb !important;
+    color: #1f2937 !important;
+    font-size: 9pt !important;
+    page-break-inside: avoid !important;
+  }
+
+  .report-badge-dup,
+  .exact-dup-badge {
+    background: #dcfce7 !important;
+    color: #15803d !important;
+    border: 1px solid #86efac !important;
+  }
+}
