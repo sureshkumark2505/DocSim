@@ -74,23 +74,24 @@ function generateMinHashSignature(shingles, numPermutations = DEFAULT_NUM_PERMUT
     ? defaultCoefficients
     : generatePermutationCoefficients(numPermutations);
 
-  const signature = new Array(numPermutations).fill(0xFFFFFFFF);
+  const signature = new Uint32Array(numPermutations);
+  signature.fill(0xFFFFFFFF);
   const shingleArray = shingles instanceof Set ? Array.from(shingles) : (Array.isArray(shingles) ? shingles : []);
 
   if (shingleArray.length === 0) {
-    return signature;
+    return Array.from(signature);
   }
 
   const primeBig = BigInt(LARGE_PRIME);
+  const aBigArray = coeff.aBig || (coeff.aBig = coeff.a.map(x => BigInt(x)));
+  const bBigArray = coeff.bBig || (coeff.bBig = coeff.b.map(x => BigInt(x)));
 
-  for (const shingle of shingleArray) {
-    const rawHash = fnv1a32(String(shingle));
+  for (let sIdx = 0; sIdx < shingleArray.length; sIdx++) {
+    const rawHash = fnv1a32(String(shingleArray[sIdx]));
     const rawHashBig = BigInt(rawHash);
 
     for (let i = 0; i < numPermutations; i++) {
-      const aBig = BigInt(coeff.a[i]);
-      const bBig = BigInt(coeff.b[i]);
-      const hashVal = Number((aBig * rawHashBig + bBig) % primeBig);
+      const hashVal = Number((aBigArray[i] * rawHashBig + bBigArray[i]) % primeBig);
 
       if (hashVal < signature[i]) {
         signature[i] = hashVal;
@@ -98,7 +99,7 @@ function generateMinHashSignature(shingles, numPermutations = DEFAULT_NUM_PERMUT
     }
   }
 
-  return signature;
+  return Array.from(signature);
 }
 
 /**

@@ -10,7 +10,9 @@
     "test:l1": "node -r dotenv/config --test tests/scans.test.js",
     "test:l2": "node -r dotenv/config --test tests/level2.test.js",
     "test:dashboard": "node -r dotenv/config --test tests/dashboard.test.js",
-    "benchmark": "node -r dotenv/config benchmark.js"
+    "benchmark": "node -r dotenv/config benchmark.js",
+    "py:start": "python python-engine/main.py",
+    "py:test": "python python-engine/test_engine.py"
   },
   "keywords": [
     "jaccard",

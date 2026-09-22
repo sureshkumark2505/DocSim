@@ -11,14 +11,38 @@ const featureService = require("./featureService");
 const { testRedisConnection } = require("../queue/connection");
 const jobs = require("../queue/jobs");
 
+const PYTHON_ENGINE_URL = process.env.PYTHON_ENGINE_URL || "http://127.0.0.1:8000";
+
+/**
+ * Checks if the high-performance Python acceleration microservice is online and responsive.
+ */
+async function isPythonEngineAvailable() {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 600);
+    const res = await fetch(`${PYTHON_ENGINE_URL}/health`, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (res.ok) {
+      const data = await res.json();
+      return data.status === "online";
+    }
+  } catch (err) {
+    // Python engine offline or unreachable
+  }
+  return false;
+}
+
 /**
  * Service to execute document comparisons and manage similarity results in MongoDB.
- * Supports both Level 1 (All-Pairs Exact Jaccard baseline) and Level 2 (MinHash + LSH + Exact Jaccard).
+ * Supports Level 1, Level 2, and Python SIMD Acceleration Engine.
  */
 const similarityService = {
+  isPythonEngineAvailable,
+
   /**
    * Main dispatch entrypoint for running a scan job asynchronously.
-   * Dispatches to Level 1 or Level 2 based on the scan's configured algorithm.
+   * Prioritizes high-throughput Python SIMD Engine if available;
+   * otherwise falls back to BullMQ Redis workers or in-process Node.js Level 1/2 engines.
    * 
    * @param {string} scanId 
    */
@@ -26,11 +50,128 @@ const similarityService = {
     const scan = await documentService.getScan(scanId);
     const algorithm = scan?.algorithm || "minhash-lsh-jaccard";
 
+    const pyAvailable = await isPythonEngineAvailable();
+    if (pyAvailable) {
+      try {
+        await this.runWithPythonEngine(scanId, algorithm);
+        return;
+      } catch (pyErr) {
+        console.warn(`Python engine encountered an issue for scan ${scanId}, falling back to Node pipeline:`, pyErr.message);
+      }
+    }
+
     if (algorithm === "jaccard") {
       return this.runLevel1Scan(scanId);
     }
 
     return this.runLevel2Scan(scanId);
+  },
+
+  /**
+   * PYTHON ENGINE — High-Throughput SIMD Vectorized MinHash + LSH + Sparse Jaccard Acceleration.
+   * Handles 1,000+ to 10,000+ files with extreme throughput.
+   * 
+   * @param {string} scanId 
+   * @param {string} algorithm 
+   */
+  async runWithPythonEngine(scanId, algorithm = "minhash-lsh-jaccard") {
+    const startOverallTime = performance.now();
+    let documents = [];
+
+    try {
+      await documentService.updateScan(scanId, {
+        status: "processing",
+        current_stage: "python_simd_processing",
+        algorithm,
+        started_at: new Date()
+      });
+
+      documents = await documentService.getDocumentsByScan(scanId);
+      const N = documents.length;
+
+      if (N < 2) {
+        throw new Error("Scan must contain at least 2 processed documents.");
+      }
+
+      const payload = {
+        scan_id: scanId,
+        documents: documents.map(d => ({
+          documentId: d.documentId,
+          filePath: d.filePath,
+          filename: d.filename
+        })),
+        algorithm
+      };
+
+      const response = await fetch(`${PYTHON_ENGINE_URL}/api/v1/scan/process`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Python engine error (${response.status}): ${errText}`);
+      }
+
+      const data = await response.json();
+      const db = getDb();
+
+      // 1. Bulk update document signatures if returned
+      if (data.document_signatures) {
+        const docUpdates = Object.entries(data.document_signatures).map(([docId, info]) => ({
+          updateOne: {
+            filter: { scanId, documentId: docId },
+            update: {
+              $set: {
+                tokenCount: info.tokenCount,
+                shingleCount: info.shingleCount,
+                minhashSignature: info.minhashSignature,
+                status: "processed"
+              }
+            }
+          }
+        }));
+        if (docUpdates.length > 0) {
+          await db.collection("documents").bulkWrite(docUpdates, { ordered: false });
+        }
+      }
+
+      // 2. Insert pairwise results into MongoDB in batches
+      if (data.results && data.results.length > 0) {
+        const batchSize = Number(process.env.DB_BATCH_SIZE) || 2000;
+        for (let i = 0; i < data.results.length; i += batchSize) {
+          const chunk = data.results.slice(i, i + batchSize).map(r => ({
+            ...r,
+            createdAt: new Date()
+          }));
+          await this.insertResultsBatch(chunk);
+        }
+      }
+
+      const totalProcessingTime = performance.now() - startOverallTime;
+
+      // 3. Mark scan as completed
+      await documentService.updateScan(scanId, {
+        status: "completed",
+        current_stage: "completed",
+        completed_comparisons: data.total_possible_pairs,
+        processed_documents: N,
+        candidate_pairs: data.candidate_pairs,
+        candidate_reduction_percent: data.candidate_reduction_percent || 0.0,
+        exact_comparisons: data.exact_comparisons,
+        high_similarity_pairs: data.high_similarity_pairs,
+        processing_time_ms: Math.round(totalProcessingTime),
+        completed_at: new Date()
+      });
+
+    } catch (error) {
+      console.error(`Python accelerated scan job ${scanId} failed:`, error);
+      throw error;
+    } finally {
+      await cleanupService.deleteScanDirectory(scanId);
+      featureService.clearScanFeatures(scanId);
+    }
   },
 
   /**
