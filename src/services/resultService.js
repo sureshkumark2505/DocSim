@@ -1,4 +1,5 @@
 const { getDb } = require("../config/db");
+const passageService = require("./passageService");
 
 /**
  * Disjoint Set Union (DSU) / Union-Find data structure for connected component grouping.
@@ -81,6 +82,16 @@ function getDisplayClassification(avg) {
     return "Moderate Similarity";
   }
   return "Low Similarity";
+}
+
+/**
+ * Escapes characters with special meaning in regular expressions to prevent injection / ReDoS.
+ * @param {string} str 
+ * @returns {string}
+ */
+function escapeRegex(str) {
+  if (!str) return "";
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
@@ -444,6 +455,32 @@ const resultService = {
       return (a.filename || "").localeCompare(b.filename || "");
     });
 
+    // Fetch top ranked pairs with matching passage evidence for the report
+    const topPairs = await db.collection("similarity_results")
+      .find({ scanId })
+      .sort({ similarityScore: -1, fileName1: 1, fileName2: 1, _id: 1 })
+      .limit(30)
+      .toArray();
+
+    const rankedMatches = topPairs.map((p, idx) => {
+      const pct = Number((p.similarityScore * 100).toFixed(2));
+      return {
+        rank: idx + 1,
+        documentAId: p.documentAId,
+        documentBId: p.documentBId,
+        fileName1: p.fileName1,
+        fileName2: p.fileName2,
+        similarityScore: p.similarityScore,
+        similarityPercentage: pct,
+        isExactDuplicate: isExactDuplicateScore(p.similarityScore),
+        classification: isExactDuplicateScore(p.similarityScore) ? "Exact Duplicate" : getDisplayClassification(pct),
+        matchingPassages: p.matchingPassages || [],
+        evidence: p.evidence || { passages: p.matchingPassages || [], images: [], code: [], tables: [] }
+      };
+    });
+
+    const isCleanedUp = scanRecord?.filesDeleted === true;
+
     return {
       success: true,
       scan_id: scanId,
@@ -454,15 +491,27 @@ const resultService = {
         startedAt: scanRecord?.startedAt || scanRecord?.createdAt,
         completedAt: scanRecord?.completedAt || new Date()
       },
+      privacyAudit: {
+        filesDeleted: isCleanedUp,
+        cleanupStatus: scanRecord?.cleanupStatus || (isCleanedUp ? "deleted" : (scanRecord?.status === "processing" ? "cleaning_up" : "retained_for_analysis")),
+        cleanedUpAt: scanRecord?.cleanedUpAt || null,
+        privacyNotice: scanRecord?.privacyNotice || (isCleanedUp
+          ? "Temporary uploaded documents successfully deleted from server storage."
+          : (scanRecord?.cleanupStatus === "failed"
+            ? "Warning: Automatic cleanup failed. Temporary files may still exist on the server."
+            : "Uploaded documents are temporarily held in an isolated sandbox during processing only."))
+      },
       summary: {
         documentsAnalyzed: totalDocuments,
         duplicateFilesCount: flatDuplicateFiles.length,
         filesWithSimilarityCount: docsWithAvg.length,
+        totalPairsCount: topPairs.length,
         overallAverageSimilarity: overallAvg,
         highestAverageSimilarity: highestAvg,
         lowestAverageSimilarity: lowestAvg
       },
       duplicateFiles: flatDuplicateFiles,
+      rankedMatches,
       allFiles: sortedAllFiles
     };
   },
@@ -503,7 +552,9 @@ const resultService = {
         comparedWithId: isDocA ? p.documentBId : p.documentAId,
         comparedWithName: isDocA ? p.fileName2 : p.fileName1,
         similarityScore: p.similarityScore,
-        similarityPercentage: Number((p.similarityScore * 100).toFixed(2))
+        similarityPercentage: Number((p.similarityScore * 100).toFixed(2)),
+        matchingPassages: p.matchingPassages || [],
+        matchingPassagesCount: (p.matchingPassages || []).length
       };
     });
 
@@ -592,6 +643,264 @@ const resultService = {
         has_prev: parsedPage > 1
       },
       results: mappedResults
+    };
+  },
+
+  /**
+   * Smart Ranking and Filtering of document pairs from highest to lowest similarity.
+   * Supports filtering by similarity score range and document name.
+   * 
+   * @param {string} scanId 
+   * @param {object} options 
+   * @param {number} [options.page=1]
+   * @param {number} [options.limit=20]
+   * @param {number} [options.threshold]
+   * @param {number} [options.minScore]
+   * @param {number} [options.maxScore]
+   * @param {string} [options.scoreCategory] - "all", "high", "moderate", "low", "exact"
+   * @param {string} [options.sort="similarity_desc"] - "similarity_desc", "similarity_asc", "name_asc", "name_desc"
+   * @param {string} [options.search=""]
+   * @returns {Promise<object>}
+   */
+  async getRankedPairs(scanId, {
+    page = 1,
+    limit = 20,
+    threshold,
+    minScore,
+    maxScore,
+    scoreCategory = "all",
+    evidenceFilter = "all",
+    contentType,
+    sort = "similarity_desc",
+    search = ""
+  } = {}) {
+    const db = getDb();
+
+    const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+    const parsedLimit = Math.min(200, Math.max(1, parseInt(limit, 10) || 20));
+    const skip = (parsedPage - 1) * parsedLimit;
+
+    const filterQuery = { scanId };
+
+    const activeFilter = contentType || evidenceFilter || scoreCategory;
+
+    // Score Category or Evidence Type filtering
+    if (activeFilter === "exact" || scoreCategory === "exact") {
+      filterQuery.similarityScore = { $gte: 0.9999 };
+    } else if (activeFilter === "text" || scoreCategory === "text") {
+      filterQuery.$or = [
+        { "matchingPassages.0": { $exists: true } },
+        { "evidence.passages.0": { $exists: true } }
+      ];
+    } else if (activeFilter === "image" || activeFilter === "images" || scoreCategory === "image" || scoreCategory === "images") {
+      filterQuery["evidence.images.0"] = { $exists: true };
+    } else if (activeFilter === "code" || scoreCategory === "code") {
+      filterQuery["evidence.code.0"] = { $exists: true };
+    } else if (activeFilter === "table" || activeFilter === "tables" || scoreCategory === "table" || scoreCategory === "tables") {
+      filterQuery["evidence.tables.0"] = { $exists: true };
+    } else if (scoreCategory === "high") {
+      filterQuery.similarityScore = { $gte: 0.70, $lt: 0.9999 };
+    } else if (scoreCategory === "moderate") {
+      filterQuery.similarityScore = { $gte: 0.40, $lt: 0.70 };
+    } else if (scoreCategory === "low") {
+      filterQuery.similarityScore = { $lt: 0.40 };
+    } else {
+      // Numerical threshold / range filters with boundary clamping
+      const rawMin = minScore !== undefined && minScore !== null && minScore !== ""
+        ? Number(minScore)
+        : (threshold !== undefined && threshold !== null && threshold !== "" ? Number(threshold) : null);
+      const rawMax = maxScore !== undefined && maxScore !== null && maxScore !== ""
+        ? Number(maxScore)
+        : null;
+
+      const effectiveMin = (rawMin !== null && !isNaN(rawMin)) ? Math.max(0, Math.min(100, rawMin)) : null;
+      const effectiveMax = (rawMax !== null && !isNaN(rawMax)) ? Math.max(0, Math.min(100, rawMax)) : null;
+
+      if (effectiveMin !== null || effectiveMax !== null) {
+        filterQuery.similarityScore = {};
+        if (effectiveMin !== null) {
+          // If passed as 0-100 percentage, normalize to 0-1
+          const normMin = effectiveMin > 1.001 ? effectiveMin / 100 : effectiveMin;
+          filterQuery.similarityScore.$gte = Number(normMin.toFixed(4));
+        }
+        if (effectiveMax !== null) {
+          const normMax = effectiveMax > 1.001 ? effectiveMax / 100 : effectiveMax;
+          filterQuery.similarityScore.$lte = Number(normMax.toFixed(4));
+        }
+      }
+    }
+
+    // Document name search (matches fileName1 or fileName2 safely with escaped regex)
+    if (search && search.trim() !== "") {
+      const q = escapeRegex(search.trim());
+      filterQuery.$or = [
+        { fileName1: { $regex: q, $options: "i" } },
+        { fileName2: { $regex: q, $options: "i" } }
+      ];
+    }
+
+    // Deterministic sorting with tie-breaker keys
+    let sortQuery = { similarityScore: -1, fileName1: 1, fileName2: 1, _id: 1 };
+    if (sort === "similarity_asc") {
+      sortQuery = { similarityScore: 1, fileName1: 1, fileName2: 1, _id: 1 };
+    } else if (sort === "name_asc") {
+      sortQuery = { fileName1: 1, fileName2: 1, similarityScore: -1, _id: 1 };
+    } else if (sort === "name_desc") {
+      sortQuery = { fileName1: -1, fileName2: -1, similarityScore: -1, _id: 1 };
+    }
+
+    const totalPairs = await db.collection("similarity_results").countDocuments(filterQuery);
+    const totalPages = Math.max(1, Math.ceil(totalPairs / parsedLimit));
+
+    const pairs = await db.collection("similarity_results")
+      .find(filterQuery)
+      .sort(sortQuery)
+      .skip(skip)
+      .limit(parsedLimit)
+      .toArray();
+
+    const rankedPairs = pairs.map((row, idx) => {
+      const pct = Number((row.similarityScore * 100).toFixed(2));
+      const isDup = isExactDuplicateScore(row.similarityScore);
+      const ev = row.evidence || {};
+      const imgCount = ev.images?.length || 0;
+      const codeCount = ev.code?.length || 0;
+      const tableCount = ev.tables?.length || 0;
+      const passageCount = (row.matchingPassages || []).length;
+      const totalEvidence = passageCount + imgCount + codeCount + tableCount;
+
+      const types = [];
+      if (passageCount > 0) types.push("text");
+      if (imgCount > 0) types.push("images");
+      if (codeCount > 0) types.push("code");
+      if (tableCount > 0) types.push("tables");
+
+      return {
+        rank: skip + idx + 1,
+        id: row._id.toString(),
+        documentAId: row.documentAId,
+        documentBId: row.documentBId,
+        fileName1: row.fileName1,
+        fileName2: row.fileName2,
+        similarityScore: row.similarityScore,
+        similarityPercentage: pct,
+        isExactDuplicate: isDup,
+        classification: isDup ? "Exact Duplicate" : getDisplayClassification(pct),
+        algorithm: row.algorithm || "minhash-lsh-jaccard",
+        matchingPassagesCount: passageCount,
+        matchingPassagesPreview: (row.matchingPassages || []).slice(0, 2),
+        evidenceSummary: {
+          totalCount: totalEvidence,
+          hasImages: imgCount > 0,
+          hasCode: codeCount > 0,
+          hasTables: tableCount > 0,
+          types: types.length > 0 ? types : ["text"]
+        },
+        createdAt: row.createdAt
+      };
+    });
+
+    return {
+      success: true,
+      scan_id: scanId,
+      pagination: {
+        total_pairs: totalPairs,
+        total_pages: totalPages,
+        current_page: parsedPage,
+        limit: parsedLimit,
+        has_next: parsedPage < totalPages,
+        has_prev: parsedPage > 1
+      },
+      rankedPairs
+    };
+  },
+
+  /**
+   * Retrieves full matching passage and multimodal evidence side-by-side for a specific document pair.
+   * 
+   * @param {string} scanId 
+   * @param {string} docAId 
+   * @param {string} docBId 
+   * @returns {Promise<object>}
+   */
+  async getPairPassages(scanId, docAId, docBId) {
+    const db = getDb();
+
+    const pair = await db.collection("similarity_results").findOne({
+      scanId,
+      $or: [
+        { documentAId: docAId, documentBId: docBId },
+        { documentAId: docBId, documentBId: docAId }
+      ]
+    });
+
+    if (!pair) {
+      throw new Error(`Comparison between documents ${docAId} and ${docBId} not found.`);
+    }
+
+    const pct = Number((pair.similarityScore * 100).toFixed(2));
+    const isDup = isExactDuplicateScore(pair.similarityScore);
+
+    // Format passages with highlighted HTML for convenient side-by-side display
+    const rawPassages = pair.matchingPassages || [];
+    const formattedPassages = rawPassages.map((p, index) => ({
+      index: index + 1,
+      passageA: p.passageA,
+      passageB: p.passageB,
+      highlightedA: passageService.highlightMatchedTokens(p.passageA, p.matchedWords),
+      highlightedB: passageService.highlightMatchedTokens(p.passageB, p.matchedWords),
+      similarity: p.similarity,
+      matchedWords: p.matchedWords || [],
+      matchType: p.matchType || (p.similarity >= 80 ? "high" : "moderate")
+    }));
+
+    // Multimodal evidence items without separate content-type percentage scores
+    const rawImages = pair.evidence?.images || [];
+    const formattedImages = rawImages.map(img => ({
+      imageAId: img.imageAId,
+      imageBId: img.imageBId,
+      pageA: img.pageA || 1,
+      pageB: img.pageB || 1,
+      isExact: !!img.isExact,
+      comparisonMethod: img.comparisonMethod || "perceptual"
+    }));
+
+    const rawCode = pair.evidence?.code || [];
+    const formattedCode = rawCode.map(c => ({
+      lineA: c.lineA || "",
+      lineB: c.lineB || ""
+    }));
+
+    const rawTables = pair.evidence?.tables || [];
+    const formattedTables = rawTables.map(t => ({
+      tableAIndex: t.tableAIndex || 1,
+      tableBIndex: t.tableBIndex || 1,
+      matchingRows: t.matchingRows || []
+    }));
+
+    return {
+      success: true,
+      scan_id: scanId,
+      documentA: {
+        documentId: pair.documentAId,
+        filename: pair.fileName1
+      },
+      documentB: {
+        documentId: pair.documentBId,
+        filename: pair.fileName2
+      },
+      similarityScore: pair.similarityScore,
+      similarityPercentage: pct,
+      isExactDuplicate: isDup,
+      classification: isDup ? "Exact Duplicate" : getDisplayClassification(pct),
+      totalMatchingPassages: formattedPassages.length,
+      passages: formattedPassages,
+      evidence: {
+        passages: formattedPassages,
+        images: formattedImages,
+        code: formattedCode,
+        tables: formattedTables
+      }
     };
   }
 };

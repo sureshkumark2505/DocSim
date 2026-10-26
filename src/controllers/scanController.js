@@ -8,6 +8,7 @@ const hashingService = require("../services/hashingService");
 const similarityService = require("../services/similarityService");
 const resultService = require("../services/resultService");
 const storageService = require("../services/storageService");
+const pdfReportService = require("../services/pdfReportService");
 
 /**
  * Controller for scan operations using MongoDB.
@@ -180,9 +181,28 @@ const scanController = {
       }
 
       const denominator = scan.candidatePairs > 0 ? scan.candidatePairs : (scan.totalPossiblePairs > 0 ? scan.totalPossiblePairs : 1);
-      const percentage = scan.status === "completed" 
+      const isCompleted = scan.status === "completed";
+      const percentage = isCompleted 
         ? 100 
         : Number(((scan.completedComparisons / denominator) * 100).toFixed(1));
+
+      // Rule 5.B: filesDeleted: true must only be recorded after successful deletion has been verified.
+      // Do not assume or fall back to isCompleted.
+      const filesDeleted = scan.filesDeleted === true;
+      const cleanupStatus = scan.cleanupStatus || (filesDeleted ? "deleted" : (scan.status === "processing" ? "cleaning_up" : "retained_for_analysis"));
+      const cleanedUpAt = scan.cleanedUpAt || null;
+      let privacyNotice = scan.privacyNotice;
+      if (!privacyNotice) {
+        if (filesDeleted) {
+          privacyNotice = "Temporary uploaded documents successfully deleted from server storage.";
+        } else if (scan.cleanupStatus === "failed") {
+          privacyNotice = "Warning: Automatic cleanup failed. Temporary files may still exist on the server.";
+        } else if (scan.status === "processing" || scan.currentStage === "cleaning_up") {
+          privacyNotice = "Processing complete. Automatic cleanup is underway.";
+        } else {
+          privacyNotice = "Uploaded documents are temporarily held in an isolated sandbox during processing only.";
+        }
+      }
 
       res.status(200).json({
         scanId: scan.scanId,
@@ -199,6 +219,10 @@ const scanController = {
         highSimilarityPairs: scan.highSimilarityPairs || 0,
         processingTimeMs: scan.processingTimeMs || 0,
         percentage,
+        filesDeleted,
+        cleanupStatus,
+        cleanedUpAt,
+        privacyNotice,
         startedAt: scan.startedAt,
         completedAt: scan.completedAt,
         error: scan.errorMessage
@@ -239,6 +263,84 @@ const scanController = {
     } catch (error) {
       console.error("Error generating scan report:", error);
       res.status(500).json({ success: false, message: "Failed to generate scan report", error: error.message });
+    }
+  },
+
+  /**
+   * GET /api/scans/:scanId/report/pdf
+   * Generate and download professional PDF report.
+   */
+  async getDownloadablePdfReport(req, res) {
+    const { scanId } = req.params;
+
+    try {
+      const scan = await documentService.getScan(scanId);
+      if (!scan) {
+        return res.status(404).json({ success: false, message: `Scan ${scanId} not found.` });
+      }
+
+      const pdfDoc = await pdfReportService.generateReportPdf(scanId);
+
+      // Sanitize scanId for safe Content-Disposition filename
+      const safeScanId = String(scanId).replace(/[^a-zA-Z0-9_-]/g, "_");
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="DocSim-Report-${safeScanId}.pdf"`);
+
+      pdfDoc.pipe(res);
+      pdfDoc.end();
+    } catch (error) {
+      console.error("Error generating PDF report:", error);
+      res.status(500).json({ success: false, message: "Failed to generate PDF report", error: error.message });
+    }
+  },
+
+  /**
+   * GET /api/scans/:scanId/pairs or GET /api/scans/:scanId/ranked-pairs
+   * Smart Ranking and Filtering of document pairs from highest to lowest similarity.
+   */
+  async getRankedPairs(req, res) {
+    const { scanId } = req.params;
+    const { page, limit, threshold, minScore, maxScore, scoreCategory, evidenceFilter, contentType, sort, search } = req.query;
+
+    try {
+      const results = await resultService.getRankedPairs(scanId, {
+        page,
+        limit,
+        threshold,
+        minScore,
+        maxScore,
+        scoreCategory,
+        evidenceFilter: evidenceFilter || req.query.filter,
+        contentType,
+        sort,
+        search
+      });
+      res.status(200).json(results);
+    } catch (error) {
+      console.error("Error fetching ranked pairs:", error);
+      res.status(500).json({ success: false, message: "Failed to fetch ranked document pairs", error: error.message });
+    }
+  },
+
+  /**
+   * GET /api/scans/:scanId/passages
+   * Display matching sentences or text passages side by side, highlighting overlapping content.
+   */
+  async getPairPassages(req, res) {
+    const { scanId } = req.params;
+    const docA = req.query.docA || req.query.documentAId;
+    const docB = req.query.docB || req.query.documentBId;
+
+    if (!docA || !docB) {
+      return res.status(400).json({ success: false, message: "Both docA and docB parameters are required." });
+    }
+
+    try {
+      const passageData = await resultService.getPairPassages(scanId, docA, docB);
+      res.status(200).json(passageData);
+    } catch (error) {
+      console.error("Error fetching matching passages:", error);
+      res.status(500).json({ success: false, message: "Failed to fetch matching passages", error: error.message });
     }
   },
 

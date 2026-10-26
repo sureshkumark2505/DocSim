@@ -9,6 +9,8 @@ const { createShingleSet } = require("../algorithms/shingling");
 
 // In-memory LRU / Map for active scan representations: scanId -> Map<documentId, Set<string>>
 const activeFeatureCache = new Map();
+// In-memory temporary cache for raw document text during active scan only
+const activeTextCache = new Map();
 
 const featureService = {
   /**
@@ -24,6 +26,45 @@ const featureService = {
       activeFeatureCache.set(scanId, scanMap);
     }
     scanMap.set(documentId, shingleSet);
+  },
+
+  /**
+   * Caches raw extracted text temporarily in memory during scan analysis.
+   * @param {string} scanId 
+   * @param {string} documentId 
+   * @param {string} text 
+   */
+  setText(scanId, documentId, text) {
+    let scanMap = activeTextCache.get(scanId);
+    if (!scanMap) {
+      scanMap = new Map();
+      activeTextCache.set(scanId, scanMap);
+    }
+    scanMap.set(documentId, text);
+  },
+
+  /**
+   * Retrieves raw extracted text for a document from memory or file.
+   * @param {string} scanId 
+   * @param {object} doc 
+   * @returns {Promise<string>}
+   */
+  async getText(scanId, doc) {
+    const scanMap = activeTextCache.get(scanId);
+    if (scanMap && scanMap.has(doc.documentId)) {
+      return scanMap.get(doc.documentId);
+    }
+    if (!doc.filePath) return "";
+    try {
+      const text = await extractionService.extractText({
+        originalname: doc.filename,
+        path: doc.filePath
+      });
+      this.setText(scanId, doc.documentId, text);
+      return text;
+    } catch (e) {
+      return "";
+    }
   },
 
   /**
@@ -43,10 +84,7 @@ const featureService = {
       return new Set();
     }
 
-    const text = await extractionService.extractText({
-      originalname: doc.filename,
-      path: doc.filePath
-    });
+    const text = await this.getText(scanId, doc);
     const tokens = preprocessingService.tokenize(text);
     const shingleSet = createShingleSet(tokens);
 
@@ -55,11 +93,12 @@ const featureService = {
   },
 
   /**
-   * Clears cached features for a completed or failed scan.
+   * Clears cached features and temporary text for a completed or failed scan.
    * @param {string} scanId 
    */
   clearScanFeatures(scanId) {
     activeFeatureCache.delete(scanId);
+    activeTextCache.delete(scanId);
   }
 };
 

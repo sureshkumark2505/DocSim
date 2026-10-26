@@ -1,8 +1,11 @@
 const { MongoClient } = require("mongodb");
+const path = require("path");
+const fs = require("fs/promises");
 
 let client = null;
 let db = null;
 let memoryServer = null;
+let memoryDbDir = null;
 let connectingPromise = null;
 
 /**
@@ -69,7 +72,17 @@ async function connectToDatabase(forceReconnect = false) {
         try {
           if (memoryServer) await memoryServer.stop();
         } catch (_) {}
-        memoryServer = await MongoMemoryServer.create();
+        memoryServer = null;
+
+        const baseTempDir = path.resolve(__dirname, "../../.mongo-temp");
+        memoryDbDir = path.resolve(baseTempDir, `mem-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`);
+        await fs.mkdir(memoryDbDir, { recursive: true });
+
+        memoryServer = await MongoMemoryServer.create({
+          instance: {
+            dbPath: memoryDbDir
+          }
+        });
       }
 
       const memUri = memoryServer.getUri();
@@ -129,6 +142,12 @@ async function closeDatabase() {
       await memoryServer.stop();
     } catch (_) {}
     memoryServer = null;
+  }
+  if (memoryDbDir) {
+    try {
+      await fs.rm(memoryDbDir, { recursive: true, force: true });
+    } catch (_) {}
+    memoryDbDir = null;
   }
   console.log("MongoDB connection closed.");
 }

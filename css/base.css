@@ -142,6 +142,13 @@
   transform: translate3d(0, 0, 0) scale(1);
 }
 
+#layer4.layer,
+#layer5.layer {
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
 .panel {
   width: min(1100px, 96vw);
   border: 1px solid var(--line-soft);

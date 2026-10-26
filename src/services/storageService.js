@@ -14,6 +14,9 @@ const storageService = {
    * @returns {string}
    */
   resolvePath(scanId, filename) {
+    if (!filename) {
+      return scanId;
+    }
     return path.join(uploadsRoot, scanId, path.basename(filename));
   },
 

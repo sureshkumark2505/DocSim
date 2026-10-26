@@ -3,14 +3,14 @@
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-green.svg?logo=node.js)](https://nodejs.org/)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg?logo=python)](https://python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-teal.svg?logo=fastapi)](https://fastapi.tiangolo.com/)
-[![NumPy](https://img.shields.io/badge/NumPy-SIMD%20Vectorized-orange.svg?logo=numpy)](https://numpy.org/)
+[![NumPy](<https://img.shields.io/badge/NumPy-SIMD%20Vectorized-orange.svg?logo=numpy>)](https://numpy.org/)
 [![Express.js](https://img.shields.io/badge/Express-4.21-lightgrey.svg?logo=express)](https://expressjs.com/)
-[![MongoDB](https://img.shields.io/badge/MongoDB-Atlas%20%7C%20In--Memory-brightgreen.svg?logo=mongodb)](https://www.mongodb.com/)
-[![BullMQ](https://img.shields.io/badge/BullMQ-Distributed%20Queue-red.svg?logo=redis)](https://bullmq.io/)
-[![Three.js](https://img.shields.io/badge/Three.js-3D%20Visualizer-black.svg?logo=three.js)](https://threejs.org/)
+[![MongoDB](<https://img.shields.io/badge/MongoDB-Atlas%20%7C%20In--Memory-brightgreen.svg?logo=mongodb>)](https://www.mongodb.com/)
+[![BullMQ](<https://img.shields.io/badge/BullMQ-Distributed%20Queue-red.svg?logo=redis>)](https://bullmq.io/)
+[![Three.js](<https://img.shields.io/badge/Three.js-3D%20Visualizer-black.svg?logo=three.js>)](https://threejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**DocSim** is a high-throughput, distributed document similarity detection platform engineered to process and cross-examine large corpora of documents (**PDF, DOCX, and TXT**) at massive scale (1,000+ files). 
+**DocSim** is a high-throughput, distributed document similarity detection platform engineered to process and cross-examine large corpora of documents (**PDF, DOCX, and TXT**) at massive scale (1,000+ files).
 
 By combining a **High-Performance Python SIMD Acceleration Engine (NumPy + SciPy + Datasketch)** with **word-level $k$-shingling**, **deterministic MinHash signatures**, **Locality-Sensitive Hashing (LSH)**, and **exact Set-based Jaccard similarity**, DocSim slashes computational complexity from quadratic $O(N^2)$ all-pairs comparisons down to near-linear $O(N)$ candidate checks—delivering over **95% comparison reductions** and processing hundreds of thousands of document comparisons in seconds.
 
@@ -152,33 +152,34 @@ Create a `.env` file in the root directory by copying `.env.example`:
 cp .env.example .env
 ```
 
-| Variable | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `PORT` | `number` | `3001` | Express server port |
-| `PYTHON_ENGINE_URL` | `string` | `http://127.0.0.1:8000` | Python Acceleration Engine URL (auto-detected) |
-| `MONGODB_URI` | `string` | *Optional* | MongoDB Atlas connection string (falls back to in-memory if omitted/unreachable) |
-| `MONGODB_DB_NAME` | `string` | `SIMILARITY` | MongoDB database name |
-| `REDIS_URL` | `string` | *Optional* | Redis connection URI for BullMQ distributed queues |
-| `REDIS_HOST` | `string` | `127.0.0.1` | Redis host |
-| `REDIS_PORT` | `number` | `6379` | Redis port |
-| `REDIS_PASSWORD` | `string` | *Optional* | Redis password |
-| `MAX_FILES` | `number` | `1000` | Maximum number of files permitted per scan |
-| `MAX_FILE_SIZE_MB` | `number` | `20` | Maximum size per individual file in MB |
-| `MAX_TOTAL_UPLOAD_SIZE_MB` | `number` | `500` | Maximum cumulative upload size per scan in MB |
-| `SIMILARITY_THRESHOLD` | `number` | `0.80` | Default similarity threshold filter ($0.0 - 1.0$) |
-| `DB_BATCH_SIZE` | `number` | `1000` | Batch insert chunk size for similarity results |
-| `SHINGLE_SIZE` | `number` | `5` | Word-level $k$-shingle window length ($k$) |
-| `MINHASH_NUM_PERMUTATIONS` | `number` | `128` | Number of hash permutations for MinHash signatures |
-| `LSH_BANDS` | `number` | `32` | Number of LSH bands ($b$) |
-| `LSH_ROWS` | `number` | `4` | Number of rows per LSH band ($r$, where $b \times r = 128$) |
-| `DOCUMENT_WORKER_CONCURRENCY` | `number` | `4` | BullMQ document parser concurrency |
-| `COMPARISON_WORKER_CONCURRENCY` | `number` | `4` | BullMQ similarity comparison concurrency |
+| Variable                          | Type       | Default                   | Description                                                                      |
+| :-------------------------------- | :--------- | :------------------------ | :------------------------------------------------------------------------------- |
+| `PORT`                          | `number` | `3001`                  | Express server port                                                              |
+| `PYTHON_ENGINE_URL`             | `string` | `http://127.0.0.1:8000` | Python Acceleration Engine URL (auto-detected)                                   |
+| `MONGODB_URI`                   | `string` | *Optional*              | MongoDB Atlas connection string (falls back to in-memory if omitted/unreachable) |
+| `MONGODB_DB_NAME`               | `string` | `SIMILARITY`            | MongoDB database name                                                            |
+| `REDIS_URL`                     | `string` | *Optional*              | Redis connection URI for BullMQ distributed queues                               |
+| `REDIS_HOST`                    | `string` | `127.0.0.1`             | Redis host                                                                       |
+| `REDIS_PORT`                    | `number` | `6379`                  | Redis port                                                                       |
+| `REDIS_PASSWORD`                | `string` | *Optional*              | Redis password                                                                   |
+| `MAX_FILES`                     | `number` | `1000`                  | Maximum number of files permitted per scan                                       |
+| `MAX_FILE_SIZE_MB`              | `number` | `20`                    | Maximum size per individual file in MB                                           |
+| `MAX_TOTAL_UPLOAD_SIZE_MB`      | `number` | `500`                   | Maximum cumulative upload size per scan in MB                                    |
+| `SIMILARITY_THRESHOLD`          | `number` | `0.80`                  | Default similarity threshold filter ($0.0 - 1.0$)                              |
+| `DB_BATCH_SIZE`                 | `number` | `1000`                  | Batch insert chunk size for similarity results                                   |
+| `SHINGLE_SIZE`                  | `number` | `5`                     | Word-level $k$-shingle window length ($k$)                                   |
+| `MINHASH_NUM_PERMUTATIONS`      | `number` | `128`                   | Number of hash permutations for MinHash signatures                               |
+| `LSH_BANDS`                     | `number` | `32`                    | Number of LSH bands ($b$)                                                      |
+| `LSH_ROWS`                      | `number` | `4`                     | Number of rows per LSH band ($r$, where $b \times r = 128$)                  |
+| `DOCUMENT_WORKER_CONCURRENCY`   | `number` | `4`                     | BullMQ document parser concurrency                                               |
+| `COMPARISON_WORKER_CONCURRENCY` | `number` | `4`                     | BullMQ similarity comparison concurrency                                         |
 
 ---
 
 ## 🚀 Quick Start
 
 ### 1. Prerequisites
+
 - **Node.js**: `v18.0.0` or higher
 - **Python**: `3.10` or higher (with `pip`)
 - **MongoDB** *(Optional)*: MongoDB Atlas or local MongoDB instance (DocSim automatically spawns an in-memory database if no external database is configured).
@@ -203,14 +204,17 @@ pip install -r python-engine/requirements.txt
 For maximum performance on 1,000+ files, run both the **Python Acceleration Engine** and the **Node.js Web Server**:
 
 #### Terminal 1 — Start Python Acceleration Engine:
+
 ```bash
 npm run py:start
 # Or directly:
 python python-engine/main.py
 ```
+
 *The Python engine starts on `http://127.0.0.1:8000` with SIMD acceleration enabled.*
 
 #### Terminal 2 — Start Node.js Web Application:
+
 ```bash
 # Production mode
 npm start
@@ -231,6 +235,7 @@ Once started, navigate to `http://localhost:3000` (or configured `PORT`) in your
 ## 📡 REST API Reference
 
 ### 1. Initialize a Scan
+
 - **`POST /api/scans`**
 - **Response:**
   ```json
@@ -242,6 +247,7 @@ Once started, navigate to `http://localhost:3000` (or configured `PORT`) in your
   ```
 
 ### 2. Upload Documents
+
 - **`POST /api/scans/:scanId/documents`**
 - **Content-Type:** `multipart/form-data`
 - **Body:** `files`: Array of files (`.pdf`, `.docx`, `.txt`)
@@ -255,6 +261,7 @@ Once started, navigate to `http://localhost:3000` (or configured `PORT`) in your
   ```
 
 ### 3. Start Similarity Scan
+
 - **`POST /api/scans/:scanId/start`**
 - **Response:**
   ```json
@@ -267,6 +274,7 @@ Once started, navigate to `http://localhost:3000` (or configured `PORT`) in your
   ```
 
 ### 4. Poll Scan Status
+
 - **`GET /api/scans/:scanId/status`**
 - **Response:**
   ```json
@@ -283,6 +291,7 @@ Once started, navigate to `http://localhost:3000` (or configured `PORT`) in your
   ```
 
 ### 5. Fetch Scan Results
+
 - **`GET /api/scans/:scanId/results`**
 - **Query Parameters:**
   - `page` *(number, default: 1)* — Page number
@@ -311,6 +320,7 @@ Once started, navigate to `http://localhost:3000` (or configured `PORT`) in your
   ```
 
 ### 6. Scan History & Health
+
 - **`GET /api/scans/history`** — Lists recent scans with metadata and completion status.
 - **`GET /api/health`** — Checks server uptime, engine status, and Redis connectivity.
 - **`POST /api/scan/compare`** *(Legacy)* — Synchronous one-shot pairwise comparison.
@@ -320,20 +330,36 @@ Once started, navigate to `http://localhost:3000` (or configured `PORT`) in your
 ## 🔬 Algorithm & Theory
 
 ### 1. Word-Level $k$-Shingling
+
 Documents are decomposed into contiguous overlapping sequences of $k$ tokens ($k=5$):
-$$\text{Shingles}(D) = \{ (w_i, w_{i+1}, \dots, w_{i+k-1}) \mid 1 \le i \le |D|-k+1 \}$$
+
+$$
+\text{Shingles}(D) = \{ (w_i, w_{i+1}, \dots, w_{i+k-1}) \mid 1 \le i \le |D|-k+1 \}
+$$
 
 ### 2. MinHash Signatures
+
 MinHash converts large shingle sets into fixed-length integer vectors of length $M=128$:
-$$h_{a,b}(x) = (a \cdot x + b) \pmod p$$
+
+$$
+h_{a,b}(x) = (a \cdot x + b) \pmod p
+$$
+
 For two document shingle sets $S_1$ and $S_2$:
-$$P(\min(h(S_1)) = \min(h(S_2))) = J(S_1, S_2) = \frac{|S_1 \cap S_2|}{|S_1 \cup S_2|}$$
+
+$$
+P(\min(h(S_1)) = \min(h(S_2))) = J(S_1, S_2) = \frac{|S_1 \cap S_2|}{|S_1 \cup S_2|}
+$$
 
 ### 3. Locality-Sensitive Hashing (LSH) Banding
+
 Signatures of size $M = 128$ are divided into $b = 32$ bands with $r = 4$ rows each ($b \times r = 128$). Two documents become a candidate pair if they collide in **at least one band**.
 
 The probability $P$ of two documents with Jaccard similarity $s$ becoming candidate pairs is:
-$$P(\text{candidate} \mid s) = 1 - (1 - s^r)^b = 1 - (1 - s^4)^{32}$$
+
+$$
+P(\text{candidate} \mid s) = 1 - (1 - s^r)^b = 1 - (1 - s^4)^{32}
+$$
 
 - For $s = 0.80$ (High similarity): $P \approx 99.99\%$ (near-zero false negatives)
 - For $s = 0.20$ (Low similarity): $P \approx 5.0\%$ (drastic reduction of unnecessary checks)
@@ -361,14 +387,15 @@ Candidate Probability vs Similarity Curve
 
 DocSim includes benchmarking tools comparing **Level 1 (All-Pairs Exact Jaccard)**, **Level 2 (Optimized Node.js MinHash + LSH)**, and the **Python SIMD & SciPy Acceleration Engine** across large document corpora (up to 1,000+ files / 499,500 comparisons):
 
-| Document Count ($N$) | Total Possible Pairs ($N(N-1)/2$) | Level 1 (Brute Force) | Level 2 (Node.js) | Python SIMD Engine | Candidate Reduction | Speedup vs Baseline |
-| :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **100** | 4,950 | 187 ms | 77 ms | **~15 ms** | **92.4%** | **$12.4\times$** |
-| **250** | 31,125 | 929 ms | 208 ms | **~65 ms** | **91.8%** | **$14.3\times$** |
-| **500** | 124,750 | 3.91 s | 603 ms | **~240 ms** | **91.6%** | **$16.3\times$** |
-| **1,000** | 499,500 | 17.31 s | 2.08 s | **907 ms (SciPy)** | **91.5% - 100%** | **$19.1\times$** |
+| Document Count ($N$) | Total Possible Pairs ($N(N-1)/2$) | Level 1 (Brute Force) | Level 2 (Node.js) |    Python SIMD Engine    |  Candidate Reduction  |   Speedup vs Baseline   |
+| :--------------------: | :---------------------------------: | :-------------------: | :---------------: | :----------------------: | :--------------------: | :----------------------: |
+|     **100**     |                4,950                |        187 ms        |       77 ms       |     **~15 ms**     |    **92.4%**    | **$12.4\times$** |
+|     **250**     |               31,125               |        929 ms        |      208 ms      |     **~65 ms**     |    **91.8%**    | **$14.3\times$** |
+|     **500**     |               124,750               |        3.91 s        |      603 ms      |    **~240 ms**    |    **91.6%**    | **$16.3\times$** |
+|    **1,000**    |               499,500               |        17.31 s        |      2.08 s      | **907 ms (SciPy)** | **91.5% - 100%** | **$19.1\times$** |
 
 ### Running Benchmarks Locally:
+
 ```bash
 # Run Python 1,000-document SIMD & SciPy scalability benchmark
 npm run py:test

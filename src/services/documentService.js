@@ -27,6 +27,10 @@ const documentService = {
       candidateReductionPercent: 0,
       highSimilarityPairs: 0,
       processingTimeMs: 0,
+      filesDeleted: false,
+      cleanupStatus: "retained_for_analysis",
+      cleanedUpAt: null,
+      privacyNotice: "Uploaded documents are temporarily held in an isolated sandbox during processing only.",
       createdAt: new Date(),
       startedAt: null,
       completedAt: null,
@@ -60,7 +64,15 @@ const documentService = {
       exact_comparisons: "exactComparisons",
       candidate_reduction_percent: "candidateReductionPercent",
       high_similarity_pairs: "highSimilarityPairs",
-      processing_time_ms: "processingTimeMs"
+      processing_time_ms: "processingTimeMs",
+      files_deleted: "filesDeleted",
+      filesDeleted: "filesDeleted",
+      cleanup_status: "cleanupStatus",
+      cleanupStatus: "cleanupStatus",
+      cleaned_up_at: "cleanedUpAt",
+      cleanedUpAt: "cleanedUpAt",
+      privacy_notice: "privacyNotice",
+      privacyNotice: "privacyNotice"
     };
 
     for (const key of Object.keys(updates)) {

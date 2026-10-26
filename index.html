@@ -70,11 +70,11 @@
     <section id="layer2" class="layer" data-layer="2">
       <div class="panel upload-panel parallax reveal">
         <h2>Upload Documents (2-1000)</h2>
-        <p class="hint">Supported formats: TXT, PDF, DOCX (mixed or same type, total 2 to 1000 files)</p>
+        <p class="hint">Supported formats: PDF, DOCX, PNG, JPG, WEBP, TXT (mixed or same type, total 2 to 1000 files)</p>
 
         <div class="file-picker">
           <button id="chooseFilesBtn" class="file-input-wrap" type="button">Select Files</button>
-          <input id="filesInput" class="picker-overlay-input" type="file" name="files" multiple>
+          <input id="filesInput" class="picker-overlay-input" type="file" name="files" multiple accept=".pdf,.docx,.txt,.png,.jpg,.jpeg,.webp">
         </div>
         <p id="fileCount" class="file-count">No files selected</p>
         <p id="selectedFilesPreview" class="hint"></p>
@@ -128,11 +128,35 @@
             <div id="metricReduction" style="font-size: 1.1rem; font-weight: 700; color: #4ade80; margin-top: 4px;">0.0%</div>
           </div>
         </div>
+
+        <!-- Privacy & Automatic Storage Cleanup Tracker -->
+        <div id="scanPrivacyCard" style="margin: 20px auto 0; width: 90%; max-width: 580px; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; font-family: 'Space Grotesk', sans-serif;">
+          <div style="display: flex; align-items: center; gap: 10px; text-align: left;">
+            <span id="privacyIcon" style="font-size: 1.3rem;">🔒</span>
+            <div>
+              <div id="privacyStatusTitle" style="font-size: 0.82rem; font-weight: 700; color: #34d399; text-transform: uppercase; letter-spacing: 0.5px;">Privacy Protocol: Active Sandbox</div>
+              <div id="privacyStatusDesc" style="font-size: 0.76rem; color: #94a3b8; margin-top: 2px;">Files held in temporary isolated sandbox. Auto-purged upon scan completion.</div>
+            </div>
+          </div>
+          <span id="privacyStatusBadge" class="privacy-status-pill pending" style="font-size: 0.72rem; padding: 4px 8px; border-radius: 4px; font-weight: 600; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); white-space: nowrap;">In Sandbox</span>
+        </div>
       </div>
     </section>
 
     <section id="layer4" class="layer" data-layer="4">
       <div class="panel results-panel parallax">
+
+        <!-- Privacy & Automatic Cleanup Status Banner -->
+        <div id="resultsPrivacyBanner" class="privacy-banner reveal">
+          <div class="privacy-banner-left">
+            <span class="privacy-shield-icon">🛡️</span>
+            <div>
+              <div class="privacy-banner-title">Zero File Storage Verified • Automatic Cleanup Complete</div>
+              <div id="privacyCleanupDetails" class="privacy-banner-subtitle">All temporary uploaded documents have been permanently deleted from server storage. Only mathematical similarity fingerprints and matching passage evidence are retained.</div>
+            </div>
+          </div>
+          <div id="privacyTimestampBadge" class="privacy-timestamp-badge">Purged &amp; Cleaned</div>
+        </div>
         
         <!-- Summary Analysis Header -->
         <div class="analysis-summary-card reveal">
@@ -141,16 +165,26 @@
               <div class="summary-eyebrow">// Document Intelligence Analysis</div>
               <h2 class="summary-heading">Similarity &amp; Duplicate Analysis</h2>
             </div>
-            <button id="viewReportBtn" class="btn btn-outline-report" type="button">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-                <line x1="16" y1="13" x2="8" y2="13"></line>
-                <line x1="16" y1="17" x2="8" y2="17"></line>
-                <polyline points="10 9 9 9 8 9"></polyline>
-              </svg>
-              View Report
-            </button>
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+              <button id="downloadReportPdfBtn" class="btn btn-primary" type="button" title="Download Official PDF Report">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                Download PDF Report
+              </button>
+              <button id="viewReportBtn" class="btn btn-outline-report" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                  <polyline points="10 9 9 9 8 9"></polyline>
+                </svg>
+                View Report
+              </button>
+            </div>
           </div>
 
           <div class="summary-metrics-bar">
@@ -190,8 +224,81 @@
           <div id="duplicateFilesContainer" class="flat-duplicate-container"></div>
         </div>
 
+        <!-- VIEW NAVIGATION TABS -->
+        <div class="analysis-tabs-bar reveal">
+          <button id="tabRankedPairs" class="analysis-tab active" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="tab-icon">
+              <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"></path>
+            </svg>
+            Ranked Document Matches
+          </button>
+          <button id="tabDocOverview" class="analysis-tab" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="tab-icon">
+              <rect x="3" y="3" width="7" height="7"></rect>
+              <rect x="14" y="3" width="7" height="7"></rect>
+              <rect x="14" y="14" width="7" height="7"></rect>
+              <rect x="3" y="14" width="7" height="7"></rect>
+            </svg>
+            All Document Overview
+          </button>
+        </div>
+
+        <!-- SECTION: SMART RANKED DOCUMENT PAIRS (Prioritized High to Low) -->
+        <div id="rankedPairsSection" class="section-block ranked-pairs-section reveal">
+          <div class="section-header">
+            <div class="section-title-wrap">
+              <span class="section-badge badge-ranked">Smart Ranking</span>
+              <h3 class="section-title">Ranked Document Matches</h3>
+            </div>
+            <div id="rankedPairsCountBadge" class="section-meta-badge">0 Ranked Pairs</div>
+          </div>
+          <p class="section-subtitle">Document pairs ranked from highest to lowest similarity. Filter by score range or document name to rapidly prioritize review effort and inspect matching passages side-by-side.</p>
+
+          <!-- Smart Ranking & Filtering Controls -->
+          <div class="pairs-controls-bar">
+            <div class="control-group">
+              <label for="pairsFilterScore">Filter Matches:</label>
+              <select id="pairsFilterScore" class="custom-select">
+                <option value="all" selected>All Matches</option>
+                <option value="text">Text Matches</option>
+                <option value="code">Code Matches</option>
+                <option value="images">Image Matches</option>
+                <option value="tables">Table Matches</option>
+                <option value="exact">Exact Duplicates (100%)</option>
+                <option value="high">High Similarity (≥ 70%)</option>
+                <option value="moderate">Moderate Similarity (40% - 69%)</option>
+                <option value="low">Low Similarity (&lt; 40%)</option>
+              </select>
+            </div>
+            <div class="control-group search-group">
+              <label for="pairsSearchInput">Filter by Document Name:</label>
+              <input id="pairsSearchInput" type="text" class="custom-input" placeholder="Search document name in pair...">
+            </div>
+            <div class="control-group">
+              <label for="pairsSortOrder">Sort Order:</label>
+              <select id="pairsSortOrder" class="custom-select">
+                <option value="similarity_desc" selected>Similarity (Highest First)</option>
+                <option value="similarity_asc">Similarity (Lowest First)</option>
+                <option value="name_asc">Document Name (A-Z)</option>
+                <option value="name_desc">Document Name (Z-A)</option>
+              </select>
+            </div>
+            <div class="pagination-group">
+              <button id="pairsPrevBtn" class="btn btn-ghost btn-sm" type="button">Prev</button>
+              <span id="pairsPageInfo" class="page-indicator">Page 1 of 1</span>
+              <button id="pairsNextBtn" class="btn btn-ghost btn-sm" type="button">Next</button>
+            </div>
+          </div>
+
+          <div id="noRankedPairsMessage" class="empty-state-notice" style="display: none;">
+            <span>No document pairs match the selected filters.</span>
+          </div>
+
+          <div id="rankedPairsContainer" class="ranked-pairs-container"></div>
+        </div>
+
         <!-- SECTION 2: ALL FILE SIMILARITY -->
-        <div class="section-block non-duplicate-section reveal">
+        <div id="docOverviewSection" class="section-block non-duplicate-section reveal" style="display: none;">
           <div class="section-header">
             <div class="section-title-wrap">
               <span class="section-badge badge-sim">Document Similarity</span>
@@ -250,8 +357,37 @@
             <button id="closeModalBtn" class="modal-close-btn" type="button" aria-label="Close modal">&times;</button>
           </div>
           <div class="modal-body">
-            <div class="modal-subtitle">Individual pairwise comparisons (excluding 100% duplicates):</div>
+            <div class="modal-subtitle">Individual pairwise comparisons (excluding 100% duplicates). Click "View Passages" on any comparison to inspect side-by-side matching text:</div>
             <div id="modalComparisonsList" class="modal-comparisons-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Side-by-Side Matching Passage Viewer Modal (Feature 1) -->
+      <div id="passageComparisonModal" class="modal-overlay passage-modal-overlay" style="display: none;">
+        <div class="modal-card passage-modal-card">
+          <div class="modal-header passage-modal-header">
+            <div>
+              <div class="modal-eyebrow">// Matching Passage &amp; Text Overlap Analysis</div>
+              <h3 id="passageModalHeading" class="modal-title" style="margin: 0;">Document A vs Document B</h3>
+              <div id="passageModalMeta" style="font-family: 'Space Grotesk', sans-serif; font-size: 0.84rem; color: #94a3b8; margin-top: 5px;">Similarity: 0.00% • Matching Passages: 0</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <button id="closePassageModalBtn" class="modal-close-btn" type="button" aria-label="Close passage modal">&times;</button>
+            </div>
+          </div>
+
+          <div class="passage-modal-filter-bar">
+            <span class="passage-filter-label">Evidence Category:</span>
+            <button id="filterAllPassagesBtn" class="btn-filter-pill active" type="button">All Evidence</button>
+            <button id="filterTextPassagesBtn" class="btn-filter-pill" type="button">Text</button>
+            <button id="filterImagePassagesBtn" class="btn-filter-pill" type="button">Screenshots</button>
+            <button id="filterCodePassagesBtn" class="btn-filter-pill" type="button">Code</button>
+            <button id="filterTablePassagesBtn" class="btn-filter-pill" type="button">Tables</button>
+          </div>
+
+          <div id="passageModalBody" class="modal-body passage-modal-body">
+            <div id="passageCardsList" class="passage-cards-list"></div>
           </div>
         </div>
       </div>
@@ -265,14 +401,22 @@
               <h3 class="modal-title" style="margin: 0;">Document Similarity &amp; Duplicate Analysis Report</h3>
               <div id="reportMetaSubtitle" style="font-family: 'Space Grotesk', sans-serif; font-size: 0.82rem; color: #94a3b8; margin-top: 4px;">Scan ID: -- • Generated: --</div>
             </div>
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <button id="printReportBtn" class="btn btn-primary btn-sm" type="button">
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+              <button id="downloadReportModalPdfBtn" class="btn btn-primary btn-sm" type="button" title="Download Official PDF Report">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon" style="width: 14px; height: 14px;">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                Download PDF
+              </button>
+              <button id="printReportBtn" class="btn btn-secondary btn-sm" type="button">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon" style="width: 14px; height: 14px;">
                   <polyline points="6 9 6 2 18 2 18 9"></polyline>
                   <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
                   <rect x="6" y="14" width="12" height="8"></rect>
                 </svg>
-                Print / Save as PDF
+                Print
               </button>
               <button id="closeReportBtn" class="modal-close-btn" type="button" aria-label="Close report">&times;</button>
             </div>
@@ -293,8 +437,12 @@
             <div class="report-section-title" style="margin-top: 24px;">2. Duplicate Files (100% Identical)</div>
             <div id="reportDuplicateContent" class="report-table-wrap"></div>
 
+            <!-- Report Section: Ranked Matches & Evidence -->
+            <div class="report-section-title" style="margin-top: 24px;">3. Ranked Document Matches &amp; Matching-Passage Evidence</div>
+            <div id="reportRankedMatchesContent" class="report-table-wrap"></div>
+
             <!-- Report Document-Level Similarity Table for All N Files -->
-            <div class="report-section-title" style="margin-top: 24px;">3. Document Similarity Overview (All Uploaded Files)</div>
+            <div class="report-section-title" style="margin-top: 24px;">4. Document Similarity Overview (All Uploaded Files)</div>
             <div id="reportAllFilesContent" class="report-table-wrap"></div>
           </div>
         </div>

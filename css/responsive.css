@@ -67,6 +67,12 @@
     padding: 0.9rem;
   }
 
+  .results-panel {
+    max-height: 92vh;
+    padding: 1.1rem 0.9rem;
+    gap: 1.1rem;
+  }
+
   .file-input-wrap {
     min-width: 220px;
     font-size: 1rem;

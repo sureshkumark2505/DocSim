@@ -8,6 +8,12 @@ const cleanupService = require("./cleanupService");
 const extractionService = require("./extractionService");
 const preprocessingService = require("./preprocessingService");
 const featureService = require("./featureService");
+const passageService = require("./passageService");
+const imageService = require("./imageService");
+const ocrService = require("./ocrService");
+const codeService = require("./codeService");
+const tableService = require("./tableService");
+const scoringService = require("./scoringService");
 const { testRedisConnection } = require("../queue/connection");
 const jobs = require("../queue/jobs");
 
@@ -137,8 +143,28 @@ const similarityService = {
         }
       }
 
-      // 2. Insert pairwise results into MongoDB in batches
+      // 2. Extract matching passages for top pairs and insert pairwise results into MongoDB in batches
       if (data.results && data.results.length > 0) {
+        for (const r of data.results) {
+          if (!r.matchingPassages && r.similarityScore >= 0.15) {
+            try {
+              const docA = documents.find(d => d.documentId === r.documentAId);
+              const docB = documents.find(d => d.documentId === r.documentBId);
+              if (docA && docB && docA.filePath && docB.filePath) {
+                const textA = await extractionService.extractText({ originalname: docA.filename, path: docA.filePath });
+                const textB = await extractionService.extractText({ originalname: docB.filename, path: docB.filePath });
+                r.matchingPassages = passageService.findMatchingPassages(textA, textB, { minSimilarity: 35, maxPassages: 10 });
+              } else {
+                r.matchingPassages = [];
+              }
+            } catch (_) {
+              r.matchingPassages = [];
+            }
+          } else if (!r.matchingPassages) {
+            r.matchingPassages = [];
+          }
+        }
+
         const batchSize = Number(process.env.DB_BATCH_SIZE) || 2000;
         for (let i = 0; i < data.results.length; i += batchSize) {
           const chunk = data.results.slice(i, i + batchSize).map(r => ({
@@ -169,9 +195,117 @@ const similarityService = {
       console.error(`Python accelerated scan job ${scanId} failed:`, error);
       throw error;
     } finally {
+      await documentService.updateScan(scanId, { current_stage: "cleaning_up" });
       await cleanupService.deleteScanDirectory(scanId);
       featureService.clearScanFeatures(scanId);
+      await ocrService.terminate();
     }
+  },
+
+  /**
+   * Helper to perform multimodal whole-document comparison between a document pair.
+   * Produces exactly ONE overall similarity score.
+   */
+  async compareMultimodalPair(docA, docB, multiA, multiB, baseTextSim, matchingPassages = []) {
+    if (docA.sha256Hash && docB.sha256Hash && docA.sha256Hash === docB.sha256Hash) {
+      const exactImages = (multiA?.images || []).map((img, idx) => ({
+        imageAId: img.imageId,
+        imageBId: multiB?.images?.[idx]?.imageId || img.imageId,
+        pageA: img.pageNumber || 1,
+        pageB: multiB?.images?.[idx]?.pageNumber || 1,
+        similarity: 1.0,
+        isExact: true,
+        comparisonMethod: "exact_sha256"
+      }));
+
+      return {
+        similarityScore: 1.0,
+        similarityPercentage: 100.0,
+        matchingPassages,
+        evidence: { passages: matchingPassages, images: exactImages, code: [], tables: [] }
+      };
+    }
+
+    const evidence = {
+      passages: matchingPassages || [],
+      images: [],
+      code: [],
+      tables: []
+    };
+
+    // 1. Text Similarity
+    const textSimilarity = baseTextSim;
+
+    // 2. Image Similarity
+    let imageSimilarity = 0;
+    if (multiA?.images?.length > 0 && multiB?.images?.length > 0) {
+      for (const imgA of multiA.images) {
+        for (const imgB of multiB.images) {
+          if (imgA.path && imgB.path) {
+            const comp = await imageService.compareImagesDetailed(imgA.path, imgB.path);
+            if (comp.similarity >= 0.50) {
+              evidence.images.push({
+                imageAId: imgA.imageId,
+                imageBId: imgB.imageId,
+                pageA: imgA.pageNumber || 1,
+                pageB: imgB.pageNumber || 1,
+                similarity: comp.similarity,
+                isExact: comp.isExact,
+                comparisonMethod: comp.comparisonMethod
+              });
+              if (comp.similarity > imageSimilarity) {
+                imageSimilarity = comp.similarity;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 3. Code Similarity (Native and OCR cross-matching)
+    let codeSimilarity = 0;
+    let codeFromImage = false;
+    if (multiA?.codeSnippets?.length > 0 && multiB?.codeSnippets?.length > 0) {
+      const codeA = multiA.codeSnippets.map(c => c.code).join("\n");
+      const codeB = multiB.codeSnippets.map(c => c.code).join("\n");
+      const compCode = codeService.compareCode(codeA, codeB);
+      codeSimilarity = compCode.similarity;
+      evidence.code = compCode.matchingLines;
+      codeFromImage = multiA.codeSnippets.some(c => c.isFromOcr) || multiB.codeSnippets.some(c => c.isFromOcr);
+    }
+
+    // 4. Table Similarity
+    let tableSimilarity = 0;
+    if (multiA?.tables?.length > 0 && multiB?.tables?.length > 0) {
+      const compTable = tableService.compareAllTables(multiA.tables, multiB.tables);
+      tableSimilarity = compTable.similarity;
+      evidence.tables = compTable.tableMatches;
+    }
+
+    // 5. Overall Unified Score (Single percentage!)
+    const overall = scoringService.computeOverallScore({
+      isExactFileMatch: false,
+      textSimilarity,
+      textTokenCountA: multiA?.text ? multiA.text.split(/\s+/).length : 0,
+      textTokenCountB: multiB?.text ? multiB.text.split(/\s+/).length : 0,
+      imageSimilarity,
+      imageCountA: multiA?.images?.length || 0,
+      imageCountB: multiB?.images?.length || 0,
+      codeSimilarity,
+      codeTokenCountA: multiA?.codeSnippets?.reduce((acc, c) => acc + (c.code.match(/\w+/g) || []).length, 0) || 0,
+      codeTokenCountB: multiB?.codeSnippets?.reduce((acc, c) => acc + (c.code.match(/\w+/g) || []).length, 0) || 0,
+      tableSimilarity,
+      tableCellCountA: multiA?.tables?.reduce((acc, t) => acc + (t.rowCount * t.colCount), 0) || 0,
+      tableCellCountB: multiB?.tables?.reduce((acc, t) => acc + (t.rowCount * t.colCount), 0) || 0,
+      codeExtractedFromImage: codeFromImage
+    });
+
+    return {
+      similarityScore: overall.similarityScore,
+      similarityPercentage: overall.similarityPercentage,
+      matchingPassages: evidence.passages,
+      evidence
+    };
   },
 
   /**
@@ -205,13 +339,18 @@ const similarityService = {
       });
 
       const representations = new Map();
+      const textsMap = new Map();
+      const multimodalMap = new Map();
       
       for (const doc of documents) {
-        const text = await extractionService.extractText({
+        const multi = await extractionService.extractMultimodalContent({
           originalname: doc.filename,
           path: doc.filePath
-        });
+        }, { scanId });
 
+        const text = multi.text || "";
+        multimodalMap.set(doc.documentId, multi);
+        textsMap.set(doc.documentId, text);
         const prep = preprocessingService.process(text);
         representations.set(doc.documentId, prep.shingleSet);
       }
@@ -237,14 +376,36 @@ const similarityService = {
           const setB = representations.get(docB.documentId);
 
           let similarityPercentage = 0.0;
+          let similarityScore = 0.0;
+          let matchingPassages = [];
+          let evidence = { passages: [], images: [], code: [], tables: [] };
 
-          if (docA.sha256Hash === docB.sha256Hash) {
+          if (docA.sha256Hash && docB.sha256Hash && docA.sha256Hash === docB.sha256Hash) {
+            similarityScore = 1.0;
             similarityPercentage = 100.00;
             exactDuplicates++;
+            const textA = textsMap.get(docA.documentId) || "";
+            matchingPassages = passageService.findMatchingPassages(textA, textA, { minSimilarity: 40, maxPassages: 10 });
+            evidence.passages = matchingPassages;
           } else {
             const jaccard = calculateJaccardSimilarity(setA, setB);
-            similarityPercentage = Number((jaccard * 100).toFixed(2));
+            const baseJaccard = Number((jaccard * 100).toFixed(2)) / 100;
             exactComparisons++;
+
+            if (baseJaccard > 0) {
+              const textA = textsMap.get(docA.documentId) || "";
+              const textB = textsMap.get(docB.documentId) || "";
+              matchingPassages = passageService.findMatchingPassages(textA, textB, { minSimilarity: 35, maxPassages: 10 });
+            }
+
+            const multiA = multimodalMap.get(docA.documentId);
+            const multiB = multimodalMap.get(docB.documentId);
+            const mmResult = await this.compareMultimodalPair(docA, docB, multiA, multiB, baseJaccard, matchingPassages);
+
+            similarityScore = mmResult.similarityScore;
+            similarityPercentage = mmResult.similarityPercentage;
+            matchingPassages = mmResult.matchingPassages;
+            evidence = mmResult.evidence;
           }
 
           completedComparisons++;
@@ -259,7 +420,9 @@ const similarityService = {
             documentBId: docB.documentId,
             fileName1: docA.filename,
             fileName2: docB.filename,
-            similarityScore: Number((similarityPercentage / 100).toFixed(4)),
+            similarityScore,
+            matchingPassages,
+            evidence,
             algorithm: "jaccard",
             createdAt: new Date()
           });
@@ -309,7 +472,9 @@ const similarityService = {
         error_message: error.message
       });
     } finally {
+      await documentService.updateScan(scanId, { current_stage: "cleaning_up" });
       await cleanupService.deleteScanDirectory(scanId);
+      await ocrService.terminate();
     }
   },
 
@@ -364,6 +529,7 @@ const similarityService = {
       });
       await cleanupService.deleteScanDirectory(scanId);
       featureService.clearScanFeatures(scanId);
+      await ocrService.terminate();
     }
   },
 
@@ -383,17 +549,23 @@ const similarityService = {
     await documentService.updateScan(scanId, { current_stage: "fingerprinting" });
 
     const preparedDocs = [];
+    const textsMap = new Map();
+    const multimodalMap = new Map();
     for (const doc of documents) {
-      const text = await extractionService.extractText({
+      const multi = await extractionService.extractMultimodalContent({
         originalname: doc.filename,
         path: doc.filePath
-      });
+      }, { scanId });
 
+      multimodalMap.set(doc.documentId, multi);
+      const text = multi.text || "";
+      textsMap.set(doc.documentId, text);
       const tokens = preprocessingService.tokenize(text);
       const shingleSet = createShingleSet(tokens);
       const minhashSignature = generateMinHashSignature(shingleSet);
 
       featureService.setFeature(scanId, doc.documentId, shingleSet);
+      featureService.setText(scanId, doc.documentId, text);
 
       await db.collection("documents").updateOne(
         { scanId, documentId: doc.documentId },
@@ -457,23 +629,47 @@ const similarityService = {
         const candidate = candidateMap.get(pairKey);
 
         let similarityScore = 0.0;
+        let matchingPassages = [];
+        let baseTextSim = 0.0;
 
         if (candidate) {
           if (candidate.isExactDuplicate) {
-            similarityScore = 1.0;
+            baseTextSim = 1.0;
             exactDuplicates++;
+            const textA = textsMap.get(docA.documentId) || "";
+            matchingPassages = passageService.findMatchingPassages(textA, textA, { minSimilarity: 40, maxPassages: 10 });
           } else {
             const setA = await featureService.getFeature(scanId, candidate.docA);
             const setB = await featureService.getFeature(scanId, candidate.docB);
             const jaccard = calculateJaccardSimilarity(setA, setB);
-            similarityScore = Number((jaccard * 100).toFixed(2)) / 100;
+            baseTextSim = Number((jaccard * 100).toFixed(2)) / 100;
             exactComparisons++;
+
+            if (baseTextSim > 0) {
+              const textA = textsMap.get(docA.documentId) || await featureService.getText(scanId, docA);
+              const textB = textsMap.get(docB.documentId) || await featureService.getText(scanId, docB);
+              matchingPassages = passageService.findMatchingPassages(textA, textB, { minSimilarity: 35, maxPassages: 10 });
+            }
           }
         } else {
           // Fast MinHash similarity estimation for non-candidate pairs
           const estimated = estimateMinHashSimilarity(docA.minhashSignature, docB.minhashSignature);
-          similarityScore = Number((estimated * 100).toFixed(2)) / 100;
+          baseTextSim = Number((estimated * 100).toFixed(2)) / 100;
+
+          if (baseTextSim >= 0.15) {
+            const textA = textsMap.get(docA.documentId) || await featureService.getText(scanId, docA);
+            const textB = textsMap.get(docB.documentId) || await featureService.getText(scanId, docB);
+            matchingPassages = passageService.findMatchingPassages(textA, textB, { minSimilarity: 35, maxPassages: 10 });
+          }
         }
+
+        const multiA = multimodalMap.get(docA.documentId);
+        const multiB = multimodalMap.get(docB.documentId);
+        const mmResult = await this.compareMultimodalPair(docA, docB, multiA, multiB, baseTextSim, matchingPassages);
+
+        similarityScore = mmResult.similarityScore;
+        matchingPassages = mmResult.matchingPassages;
+        const evidence = mmResult.evidence;
 
         if (similarityScore >= 0.80) {
           highSimilarityPairs++;
@@ -486,6 +682,8 @@ const similarityService = {
           fileName1: docA.filename,
           fileName2: docB.filename,
           similarityScore,
+          matchingPassages,
+          evidence,
           algorithm: "minhash-lsh-jaccard",
           createdAt: new Date()
         });
@@ -518,6 +716,7 @@ const similarityService = {
     });
 
     // Clean up temporary files
+    await documentService.updateScan(scanId, { current_stage: "cleaning_up" });
     await cleanupService.deleteScanDirectory(scanId);
     featureService.clearScanFeatures(scanId);
   },

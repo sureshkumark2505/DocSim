@@ -24,15 +24,82 @@ const cleanupService = {
     // Path traversal check
     if (!targetDir.startsWith(uploadsRoot) || targetDir === uploadsRoot) {
       console.warn(`Prevented unsafe deletion attempt of directory: ${targetDir}`);
+      try {
+        const db = getDb();
+        if (db) {
+          await db.collection("scans").updateOne(
+            { scanId },
+            {
+              $set: {
+                filesDeleted: false,
+                cleanupStatus: "rejected",
+                privacyNotice: "Automatic cleanup was rejected due to an invalid path."
+              }
+            }
+          );
+        }
+      } catch (dbErr) {
+        // Silently ignore DB errors if DB is disconnected in tests
+      }
       return;
     }
 
     try {
       await fs.rm(targetDir, { recursive: true, force: true });
+
+      // Explicitly verify the directory is absent from the filesystem
+      let stillExists = false;
+      try {
+        await fs.access(targetDir);
+        stillExists = true;
+      } catch (accessErr) {
+        // ENOENT confirms directory has been removed
+        stillExists = false;
+      }
+
+      if (stillExists) {
+        throw new Error(`Directory ${targetDir} still exists after removal attempt.`);
+      }
+
       console.log(`Successfully cleaned up temporary directory for scan: ${scanId}`);
+      
+      try {
+        const db = getDb();
+        if (db) {
+          await db.collection("scans").updateOne(
+            { scanId },
+            {
+              $set: {
+                filesDeleted: true,
+                cleanupStatus: "deleted",
+                cleanedUpAt: new Date(),
+                privacyNotice: "Temporary uploaded documents successfully deleted from server storage."
+              }
+            }
+          );
+        }
+      } catch (dbErr) {
+        // Silently ignore DB errors if DB is disconnected in tests
+      }
     } catch (error) {
-      if (error.code !== "ENOENT") {
-        console.error(`Error deleting scan directory ${scanId}:`, error.message);
+      console.error(`Error deleting scan directory ${scanId}:`, error.message);
+      try {
+        const db = getDb();
+        if (db) {
+          await db.collection("scans").updateOne(
+            { scanId },
+            {
+              $set: {
+                filesDeleted: false,
+                cleanupStatus: "failed",
+                cleanupError: error.message,
+                privacyNotice: "Warning: Automatic cleanup failed. Temporary files may still exist on the server."
+              }
+            }
+          );
+        }
+      } catch (dbErr) {
+        // Silently ignore DB errors if DB is disconnected in tests
       }
     }
   },

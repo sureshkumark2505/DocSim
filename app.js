@@ -34,7 +34,7 @@ let pointerX = 0;
 let pointerY = 0;
 let bookScrollOffset = 0;
 let selectedFiles = [];
-const ALLOWED_EXTENSIONS = new Set(["txt", "pdf", "docx"]);
+const ALLOWED_EXTENSIONS = new Set(["txt", "pdf", "docx", "png", "jpg", "jpeg", "webp"]);
 
 function showLayer(layerNumber) {
   layers.forEach((layer) => {
@@ -48,6 +48,17 @@ function showLayer(layerNumber) {
     window.setTimeout(() => {
       if (heroPanel) {
         heroPanel.scrollTop = 0;
+      }
+    }, 0);
+  } else if (layerNumber === 4) {
+    window.setTimeout(() => {
+      const resultsPanel = document.querySelector(".results-panel");
+      if (resultsPanel) {
+        resultsPanel.scrollTop = 0;
+      }
+      const layer4 = document.getElementById("layer4");
+      if (layer4) {
+        layer4.scrollTop = 0;
       }
     }, 0);
   }
@@ -117,7 +128,7 @@ function validateFiles(files) {
   for (const file of files) {
     const extension = file.name.split(".").pop().toLowerCase();
     if (!ALLOWED_EXTENSIONS.has(extension)) {
-      return `Unsupported file type: ${file.name}. Allowed: TXT, PDF, DOCX.`;
+      return `Unsupported file type: ${file.name}. Allowed: PDF, DOCX, PNG, JPG, WEBP, TXT.`;
     }
   }
 
@@ -171,7 +182,7 @@ function handlePickedFiles(pickedFiles) {
   }
   updateFileCount();
   syncUploadState();
-  setText(uploadInfo, "Allowed: any combination of TXT/PDF/DOCX (same or mixed), 2 to 1000 files.");
+  setText(uploadInfo, "Allowed: any combination of PDF, DOCX, PNG, JPG, WEBP, TXT (same or mixed), 2 to 1000 files.");
   setText(resultsError, "");
   setText(historyError, "");
 }
@@ -208,11 +219,51 @@ const modalComparisonsList = document.getElementById("modalComparisonsList");
 const scanReportModal = document.getElementById("scanReportModal");
 const closeReportBtn = document.getElementById("closeReportBtn");
 const printReportBtn = document.getElementById("printReportBtn");
+const downloadReportPdfBtn = document.getElementById("downloadReportPdfBtn");
+const downloadReportModalPdfBtn = document.getElementById("downloadReportModalPdfBtn");
 const reportMetaSubtitle = document.getElementById("reportMetaSubtitle");
 const reportPrintMeta = document.getElementById("reportPrintMeta");
 const reportSummaryGrid = document.getElementById("reportSummaryGrid");
 const reportDuplicateContent = document.getElementById("reportDuplicateContent");
+const reportRankedMatchesContent = document.getElementById("reportRankedMatchesContent");
 const reportAllFilesContent = document.getElementById("reportAllFilesContent");
+
+// Feature 4: Privacy & Automatic Cleanup Elements
+const scanPrivacyCard = document.getElementById("scanPrivacyCard");
+const privacyIcon = document.getElementById("privacyIcon");
+const privacyStatusTitle = document.getElementById("privacyStatusTitle");
+const privacyStatusDesc = document.getElementById("privacyStatusDesc");
+const privacyStatusBadge = document.getElementById("privacyStatusBadge");
+const resultsPrivacyBanner = document.getElementById("resultsPrivacyBanner");
+const privacyCleanupDetails = document.getElementById("privacyCleanupDetails");
+const privacyTimestampBadge = document.getElementById("privacyTimestampBadge");
+
+// Feature 2: View Switcher & Smart Ranking Elements
+const tabRankedPairs = document.getElementById("tabRankedPairs");
+const tabDocOverview = document.getElementById("tabDocOverview");
+const rankedPairsSection = document.getElementById("rankedPairsSection");
+const docOverviewSection = document.getElementById("docOverviewSection");
+const pairsFilterScore = document.getElementById("pairsFilterScore");
+const pairsSearchInput = document.getElementById("pairsSearchInput");
+const pairsSortOrder = document.getElementById("pairsSortOrder");
+const pairsPrevBtn = document.getElementById("pairsPrevBtn");
+const pairsPageInfo = document.getElementById("pairsPageInfo");
+const pairsNextBtn = document.getElementById("pairsNextBtn");
+const rankedPairsCountBadge = document.getElementById("rankedPairsCountBadge");
+const rankedPairsContainer = document.getElementById("rankedPairsContainer");
+const noRankedPairsMessage = document.getElementById("noRankedPairsMessage");
+
+// Feature 1: Matching Passage Highlighting Modal Elements
+const passageComparisonModal = document.getElementById("passageComparisonModal");
+const passageModalHeading = document.getElementById("passageModalHeading");
+const passageModalMeta = document.getElementById("passageModalMeta");
+const closePassageModalBtn = document.getElementById("closePassageModalBtn");
+const passageCardsList = document.getElementById("passageCardsList");
+const filterAllPassagesBtn = document.getElementById("filterAllPassagesBtn");
+const filterTextPassagesBtn = document.getElementById("filterTextPassagesBtn");
+const filterImagePassagesBtn = document.getElementById("filterImagePassagesBtn");
+const filterCodePassagesBtn = document.getElementById("filterCodePassagesBtn");
+const filterTablePassagesBtn = document.getElementById("filterTablePassagesBtn");
 
 const scanStageHeader = document.getElementById("scanStageHeader");
 const scanProgressDetails = document.getElementById("scanProgressDetails");
@@ -228,6 +279,18 @@ const currentLimit = 24;
 let currentSort = "avg_desc";
 let currentSearch = "";
 let searchDebounceTimer = null;
+
+// Smart Ranked Pairs State
+let currentPairsPage = 1;
+const currentPairsLimit = 15;
+let currentPairsFilterScore = "all";
+let currentPairsSearch = "";
+let currentPairsSort = "similarity_desc";
+let pairsSearchDebounceTimer = null;
+
+// Passage Modal State
+let currentPassageData = null;
+let currentPassageFilter = "all";
 
 function escapeHtml(str) {
   if (!str) return "";
@@ -267,6 +330,99 @@ nextPageBtn?.addEventListener("click", () => {
   loadDashboard();
 });
 
+// Feature 2: View Switcher Tabs
+tabRankedPairs?.addEventListener("click", () => {
+  tabRankedPairs.classList.add("active");
+  tabDocOverview?.classList.remove("active");
+  if (rankedPairsSection) rankedPairsSection.style.display = "block";
+  if (docOverviewSection) docOverviewSection.style.display = "none";
+  loadRankedPairs();
+});
+
+tabDocOverview?.addEventListener("click", () => {
+  tabDocOverview.classList.add("active");
+  tabRankedPairs?.classList.remove("active");
+  if (docOverviewSection) docOverviewSection.style.display = "block";
+  if (rankedPairsSection) rankedPairsSection.style.display = "none";
+  loadDashboard();
+});
+
+// Feature 2: Ranked Pairs Controls
+pairsFilterScore?.addEventListener("change", (e) => {
+  currentPairsFilterScore = e.target.value;
+  currentPairsPage = 1;
+  loadRankedPairs();
+});
+
+pairsSearchInput?.addEventListener("input", (e) => {
+  clearTimeout(pairsSearchDebounceTimer);
+  pairsSearchDebounceTimer = setTimeout(() => {
+    currentPairsSearch = e.target.value;
+    currentPairsPage = 1;
+    loadRankedPairs();
+  }, 250);
+});
+
+pairsSortOrder?.addEventListener("change", (e) => {
+  currentPairsSort = e.target.value;
+  currentPairsPage = 1;
+  loadRankedPairs();
+});
+
+pairsPrevBtn?.addEventListener("click", () => {
+  if (currentPairsPage > 1) {
+    currentPairsPage--;
+    loadRankedPairs();
+  }
+});
+
+pairsNextBtn?.addEventListener("click", () => {
+  currentPairsPage++;
+  loadRankedPairs();
+});
+
+// Feature 3: Downloadable PDF Report Buttons
+function triggerPdfDownload() {
+  if (!currentScanId) return;
+  window.location.href = apiUrl(`/api/scans/${currentScanId}/report/pdf`);
+}
+downloadReportPdfBtn?.addEventListener("click", triggerPdfDownload);
+downloadReportModalPdfBtn?.addEventListener("click", triggerPdfDownload);
+
+// Feature 1: Passage Modal Filter Buttons & Close
+closePassageModalBtn?.addEventListener("click", closePassageComparison);
+passageComparisonModal?.addEventListener("click", (e) => {
+  if (e.target === passageComparisonModal) {
+    closePassageComparison();
+  }
+});
+
+filterAllPassagesBtn?.addEventListener("click", () => {
+  setPassageFilter("all");
+});
+filterTextPassagesBtn?.addEventListener("click", () => {
+  setPassageFilter("text");
+});
+filterImagePassagesBtn?.addEventListener("click", () => {
+  setPassageFilter("images");
+});
+filterCodePassagesBtn?.addEventListener("click", () => {
+  setPassageFilter("code");
+});
+filterTablePassagesBtn?.addEventListener("click", () => {
+  setPassageFilter("tables");
+});
+
+function setPassageFilter(filter) {
+  currentPassageFilter = filter;
+  filterAllPassagesBtn?.classList.toggle("active", filter === "all");
+  filterTextPassagesBtn?.classList.toggle("active", filter === "text");
+  filterImagePassagesBtn?.classList.toggle("active", filter === "images");
+  filterCodePassagesBtn?.classList.toggle("active", filter === "code");
+  filterTablePassagesBtn?.classList.toggle("active", filter === "tables");
+  renderPassageCards();
+}
+
 // Modal Events
 closeModalBtn?.addEventListener("click", closeDocumentDetail);
 documentDetailModal?.addEventListener("click", (e) => {
@@ -289,6 +445,9 @@ scanReportModal?.addEventListener("click", (e) => {
 
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
+    if (passageComparisonModal && passageComparisonModal.style.display !== "none") {
+      closePassageComparison();
+    }
     if (documentDetailModal && documentDetailModal.style.display !== "none") {
       closeDocumentDetail();
     }
@@ -297,6 +456,13 @@ document.addEventListener("keydown", (e) => {
     }
   }
 });
+
+function closePassageComparison() {
+  if (passageComparisonModal) {
+    passageComparisonModal.style.display = "none";
+  }
+  currentPassageData = null;
+}
 
 function closeDocumentDetail() {
   if (documentDetailModal) {
@@ -367,7 +533,22 @@ async function openDocumentDetail(documentId) {
           else if (pct >= 40) score.style.color = "#c084fc";
           else score.style.color = "#94a3b8";
 
-          row.append(name, score);
+          const actionsWrap = document.createElement("div");
+          actionsWrap.style.display = "flex";
+          actionsWrap.style.alignItems = "center";
+          actionsWrap.style.gap = "8px";
+
+          const passageBtn = document.createElement("button");
+          passageBtn.className = "btn-inspect-passages";
+          passageBtn.type = "button";
+          passageBtn.innerHTML = `Inspect Passages &rarr;`;
+          passageBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            openPassageComparison(doc.documentId, comp.comparedWithId, doc.filename, comp.comparedWithName);
+          });
+
+          actionsWrap.append(score, passageBtn);
+          row.append(name, actionsWrap);
           frag.appendChild(row);
         });
         modalComparisonsList.appendChild(frag);
@@ -378,6 +559,460 @@ async function openDocumentDetail(documentId) {
       modalComparisonsList.innerHTML = `<p style="color:#ef4444;">Error: ${error.message}</p>`;
     }
   }
+}
+
+async function openPassageComparison(docAId, docBId, docAName, docBName) {
+  if (!currentScanId || !docAId || !docBId) return;
+
+  try {
+    if (passageModalHeading) {
+      passageModalHeading.textContent = `${docAName || "Document A"} vs ${docBName || "Document B"}`;
+    }
+    if (passageModalMeta) {
+      passageModalMeta.textContent = "Loading matching passages and overlap evidence...";
+    }
+    if (passageCardsList) {
+      passageCardsList.innerHTML = "<p style='color:#94a3b8; font-family:\"Space Grotesk\",sans-serif; text-align:center; padding:2rem;'>Analyzing document sentences and extracting overlapping passages...</p>";
+    }
+    if (passageComparisonModal) {
+      passageComparisonModal.style.display = "flex";
+    }
+
+    const res = await fetch(apiUrl(`/api/scans/${currentScanId}/passages?docA=${encodeURIComponent(docAId)}&docB=${encodeURIComponent(docBId)}`));
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.message || "Failed to load matching passages.");
+    }
+
+    currentPassageData = data;
+    currentPassageFilter = "all";
+    filterAllPassagesBtn?.classList.add("active");
+    filterTextPassagesBtn?.classList.remove("active");
+    filterImagePassagesBtn?.classList.remove("active");
+    filterCodePassagesBtn?.classList.remove("active");
+    filterTablePassagesBtn?.classList.remove("active");
+
+    const ev = data.evidence || {};
+    const totalEv = (ev.passages?.length || data.passages?.length || 0) +
+                    (ev.images?.length || 0) +
+                    (ev.code?.length || 0) +
+                    (ev.tables?.length || 0);
+
+    if (passageModalHeading) {
+      passageModalHeading.textContent = `${data.documentA.filename} vs ${data.documentB.filename}`;
+    }
+    if (passageModalMeta) {
+      passageModalMeta.textContent = `Overall Similarity: ${data.similarityPercentage.toFixed(2)}% (${data.classification}) • Matching Evidence: ${totalEv} item${totalEv !== 1 ? 's' : ''}`;
+    }
+
+    renderPassageCards();
+
+  } catch (error) {
+    if (passageCardsList) {
+      passageCardsList.innerHTML = `<p style="color:#ef4444; padding:1.5rem; text-align:center;">Error: ${escapeHtml(error.message)}</p>`;
+    }
+  }
+}
+
+function renderPassageCards() {
+  if (!currentPassageData || !passageCardsList) return;
+
+  const ev = currentPassageData.evidence || {};
+  const passages = ev.passages || currentPassageData.passages || [];
+  const images = ev.images || [];
+  const code = ev.code || [];
+  const tables = ev.tables || [];
+
+  const showText = currentPassageFilter === "all" || currentPassageFilter === "text";
+  const showImages = currentPassageFilter === "all" || currentPassageFilter === "images" || currentPassageFilter === "image";
+  const showCode = currentPassageFilter === "all" || currentPassageFilter === "code";
+  const showTables = currentPassageFilter === "all" || currentPassageFilter === "tables" || currentPassageFilter === "table";
+
+  let visibleCount = 0;
+  if (showText) visibleCount += passages.length;
+  if (showImages) visibleCount += images.length;
+  if (showCode) visibleCount += code.length;
+  if (showTables) visibleCount += tables.length;
+
+  if (visibleCount === 0) {
+    passageCardsList.innerHTML = `
+      <div style="text-align: center; padding: 2.5rem 1rem; color: #94a3b8; font-family: 'Space Grotesk', sans-serif;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 32px; height: 32px; margin: 0 auto 10px; color: #64748b; display: block;">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="8" y1="12" x2="16" y2="12"></line>
+        </svg>
+        <div>No matching evidence found under the "${escapeHtml(currentPassageFilter)}" category.</div>
+      </div>
+    `;
+    return;
+  }
+
+  passageCardsList.innerHTML = "";
+  const frag = document.createDocumentFragment();
+
+  // 1. Render Matching Text Passages
+  if (showText && passages.length > 0) {
+    passages.forEach((p, idx) => {
+      const card = document.createElement("div");
+      card.className = "passage-pair-card";
+
+      const header = document.createElement("div");
+      header.className = "passage-card-header";
+
+      const indexBadge = document.createElement("span");
+      indexBadge.className = "passage-index-badge";
+      indexBadge.textContent = `Matching Passage #${p.index || idx + 1}`;
+
+      const overlapBadge = document.createElement("span");
+      overlapBadge.className = "passage-overlap-badge high";
+      overlapBadge.textContent = "TEXT PASSAGE MATCH";
+
+      header.append(indexBadge, overlapBadge);
+
+      const sbs = document.createElement("div");
+      sbs.className = "passage-side-by-side";
+
+      const colA = document.createElement("div");
+      colA.className = "passage-col";
+      colA.innerHTML = `
+        <div class="passage-col-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path></svg>
+          <span>${escapeHtml(currentPassageData.documentA.filename)}</span>
+        </div>
+        <div class="passage-text-content">${p.highlightedA || escapeHtml(p.passageA)}</div>
+      `;
+
+      const colB = document.createElement("div");
+      colB.className = "passage-col";
+      colB.innerHTML = `
+        <div class="passage-col-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path></svg>
+          <span>${escapeHtml(currentPassageData.documentB.filename)}</span>
+        </div>
+        <div class="passage-text-content">${p.highlightedB || escapeHtml(p.passageB)}</div>
+      `;
+
+      sbs.append(colA, colB);
+
+      const footer = document.createElement("div");
+      footer.className = "passage-card-footer";
+      footer.innerHTML = `<span class="matched-words-label">Evidence:</span> <span class="matched-word-chip">Matching prose passages</span>`;
+
+      card.append(header, sbs, footer);
+      frag.appendChild(card);
+    });
+  }
+
+  // 2. Render Matching Screenshot / Image Evidence
+  if (showImages && images.length > 0) {
+    images.forEach((img, idx) => {
+      const card = document.createElement("div");
+      card.className = "passage-pair-card image-evidence-card";
+
+      const header = document.createElement("div");
+      header.className = "passage-card-header";
+
+      const indexBadge = document.createElement("span");
+      indexBadge.className = "passage-index-badge";
+      indexBadge.textContent = `Screenshot Match #${idx + 1}`;
+
+      const overlapBadge = document.createElement("span");
+      overlapBadge.className = "passage-overlap-badge high";
+      overlapBadge.textContent = img.isExact ? "EXACT IMAGE DUPLICATE" : "PERCEPTUAL VISUAL MATCH";
+
+      header.append(indexBadge, overlapBadge);
+
+      const sbs = document.createElement("div");
+      sbs.className = "passage-side-by-side";
+
+      const colA = document.createElement("div");
+      colA.className = "passage-col";
+      colA.innerHTML = `
+        <div class="passage-col-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+          <span>${escapeHtml(currentPassageData.documentA.filename)} (Page ${img.pageA || 1})</span>
+        </div>
+        <div class="passage-text-content" style="background: rgba(255,255,255,0.02); padding: 12px; border-radius: 6px;">
+          <div style="font-size: 0.82rem; color: #94a3b8; font-family: monospace;">Screenshot ID: ${escapeHtml(img.imageAId || 'image_A')}</div>
+          <div style="font-size: 0.8rem; color: #38bdf8; margin-top: 4px;">Visual content identified and extracted from document</div>
+        </div>
+      `;
+
+      const colB = document.createElement("div");
+      colB.className = "passage-col";
+      colB.innerHTML = `
+        <div class="passage-col-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+          <span>${escapeHtml(currentPassageData.documentB.filename)} (Page ${img.pageB || 1})</span>
+        </div>
+        <div class="passage-text-content" style="background: rgba(255,255,255,0.02); padding: 12px; border-radius: 6px;">
+          <div style="font-size: 0.82rem; color: #94a3b8; font-family: monospace;">Screenshot ID: ${escapeHtml(img.imageBId || 'image_B')}</div>
+          <div style="font-size: 0.8rem; color: #38bdf8; margin-top: 4px;">Matching visual layout and diagram structure verified</div>
+        </div>
+      `;
+
+      sbs.append(colA, colB);
+
+      const footer = document.createElement("div");
+      footer.className = "passage-card-footer";
+      footer.innerHTML = `<span class="matched-words-label">Verification:</span> <span class="matched-word-chip">${img.isExact ? 'Exact Bitwise Match (SHA-256)' : 'Perceptual Hash / Structural Similarity'}</span>`;
+
+      card.append(header, sbs, footer);
+      frag.appendChild(card);
+    });
+  }
+
+  // 3. Render Matching Code Evidence
+  if (showCode && code.length > 0) {
+    code.forEach((c, idx) => {
+      const card = document.createElement("div");
+      card.className = "passage-pair-card code-evidence-card";
+
+      const header = document.createElement("div");
+      header.className = "passage-card-header";
+
+      const indexBadge = document.createElement("span");
+      indexBadge.className = "passage-index-badge";
+      indexBadge.textContent = `Code Match #${idx + 1}`;
+
+      const overlapBadge = document.createElement("span");
+      overlapBadge.className = "passage-overlap-badge high";
+      overlapBadge.textContent = "SOURCE CODE OVERLAP";
+
+      header.append(indexBadge, overlapBadge);
+
+      const sbs = document.createElement("div");
+      sbs.className = "passage-side-by-side";
+
+      const colA = document.createElement("div");
+      colA.className = "passage-col";
+      colA.innerHTML = `
+        <div class="passage-col-title"><span>${escapeHtml(currentPassageData.documentA.filename)}</span></div>
+        <pre class="passage-text-content" style="font-family: monospace; white-space: pre-wrap; font-size: 0.8rem;">${escapeHtml(c.lineA)}</pre>
+      `;
+
+      const colB = document.createElement("div");
+      colB.className = "passage-col";
+      colB.innerHTML = `
+        <div class="passage-col-title"><span>${escapeHtml(currentPassageData.documentB.filename)}</span></div>
+        <pre class="passage-text-content" style="font-family: monospace; white-space: pre-wrap; font-size: 0.8rem;">${escapeHtml(c.lineB || c.lineA)}</pre>
+      `;
+
+      sbs.append(colA, colB);
+
+      const footer = document.createElement("div");
+      footer.className = "passage-card-footer";
+      footer.innerHTML = `<span class="matched-words-label">Code Analysis:</span> <span class="matched-word-chip">Normalized logic & statement match</span>`;
+
+      card.append(header, sbs, footer);
+      frag.appendChild(card);
+    });
+  }
+
+  // 4. Render Matching Table Evidence
+  if (showTables && tables.length > 0) {
+    tables.forEach((t, idx) => {
+      const card = document.createElement("div");
+      card.className = "passage-pair-card table-evidence-card";
+
+      const header = document.createElement("div");
+      header.className = "passage-card-header";
+
+      const indexBadge = document.createElement("span");
+      indexBadge.className = "passage-index-badge";
+      indexBadge.textContent = `Table Match #${idx + 1}`;
+
+      const overlapBadge = document.createElement("span");
+      overlapBadge.className = "passage-overlap-badge high";
+      overlapBadge.textContent = "EXPERIMENTAL TABLE MATCH";
+
+      header.append(indexBadge, overlapBadge);
+
+      const sbs = document.createElement("div");
+      sbs.className = "passage-side-by-side";
+
+      const colA = document.createElement("div");
+      colA.className = "passage-col";
+      colA.innerHTML = `
+        <div class="passage-col-title"><span>${escapeHtml(currentPassageData.documentA.filename)} (Table ${t.tableAIndex || 1})</span></div>
+        <div class="passage-text-content" style="font-size: 0.8rem;">${(t.matchingRows || []).map(r => escapeHtml(r.rowA ? r.rowA.join(' | ') : '')).join('<br>')}</div>
+      `;
+
+      const colB = document.createElement("div");
+      colB.className = "passage-col";
+      colB.innerHTML = `
+        <div class="passage-col-title"><span>${escapeHtml(currentPassageData.documentB.filename)} (Table ${t.tableBIndex || 1})</span></div>
+        <div class="passage-text-content" style="font-size: 0.8rem;">${(t.matchingRows || []).map(r => escapeHtml(r.rowB ? r.rowB.join(' | ') : '')).join('<br>')}</div>
+      `;
+
+      sbs.append(colA, colB);
+
+      const footer = document.createElement("div");
+      footer.className = "passage-card-footer";
+      footer.innerHTML = `<span class="matched-words-label">Table Analysis:</span> <span class="matched-word-chip">Matching cell values & structural rows</span>`;
+
+      card.append(header, sbs, footer);
+      frag.appendChild(card);
+    });
+  }
+
+  passageCardsList.appendChild(frag);
+}
+
+async function loadRankedPairs() {
+  if (!currentScanId) return;
+
+  try {
+    const query = new URLSearchParams({
+      page: String(currentPairsPage),
+      limit: String(currentPairsLimit),
+      scoreCategory: currentPairsFilterScore,
+      search: currentPairsSearch,
+      sort: currentPairsSort
+    });
+
+    const res = await fetch(apiUrl(`/api/scans/${currentScanId}/pairs?${query.toString()}`));
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.message || "Failed to fetch ranked document matches.");
+    }
+
+    renderRankedPairs(data);
+
+  } catch (error) {
+    console.error("Error loading ranked pairs:", error);
+  }
+}
+
+function renderRankedPairs(data) {
+  const pairs = data.rankedPairs || [];
+  const pagination = data.pagination || { total_pairs: 0, total_pages: 1, current_page: 1 };
+
+  setText(rankedPairsCountBadge, `${pagination.total_pairs.toLocaleString()} Ranked Pair${pagination.total_pairs !== 1 ? 's' : ''}`);
+
+  if (pairs.length === 0) {
+    if (noRankedPairsMessage) noRankedPairsMessage.style.display = "block";
+    if (rankedPairsContainer) rankedPairsContainer.innerHTML = "";
+  } else {
+    if (noRankedPairsMessage) noRankedPairsMessage.style.display = "none";
+    if (rankedPairsContainer) {
+      rankedPairsContainer.innerHTML = "";
+      const frag = document.createDocumentFragment();
+
+      pairs.forEach(pair => {
+        const card = document.createElement("div");
+        card.className = "ranked-pair-card";
+
+        // Rank Badge
+        const rankBadge = document.createElement("div");
+        rankBadge.className = "pair-rank-badge";
+        rankBadge.textContent = `#${pair.rank}`;
+
+        // Docs Info
+        const docsWrap = document.createElement("div");
+        docsWrap.className = "pair-docs-wrap";
+
+        const namesRow = document.createElement("div");
+        namesRow.className = "pair-names-row";
+
+        const name1 = document.createElement("span");
+        name1.className = "pair-doc-name";
+        name1.textContent = pair.fileName1;
+        name1.title = pair.fileName1;
+
+        const vs = document.createElement("span");
+        vs.className = "pair-vs-divider";
+        vs.textContent = "vs";
+
+        const name2 = document.createElement("span");
+        name2.className = "pair-doc-name";
+        name2.textContent = pair.fileName2;
+        name2.title = pair.fileName2;
+
+        namesRow.append(name1, vs, name2);
+
+        const metaRow = document.createElement("div");
+        metaRow.className = "pair-meta-row";
+
+        const classTag = document.createElement("span");
+        classTag.className = "pair-class-tag";
+        classTag.textContent = pair.classification || "Analysis";
+        if (pair.isExactDuplicate) {
+          classTag.style.background = "rgba(34, 197, 94, 0.15)";
+          classTag.style.color = "#4ade80";
+          classTag.style.borderColor = "rgba(34, 197, 94, 0.35)";
+        } else if (pair.similarityPercentage >= 70) {
+          classTag.style.background = "rgba(56, 189, 248, 0.15)";
+          classTag.style.color = "#38bdf8";
+          classTag.style.borderColor = "rgba(56, 189, 248, 0.35)";
+        } else if (pair.similarityPercentage >= 40) {
+          classTag.style.background = "rgba(192, 132, 252, 0.15)";
+          classTag.style.color = "#c084fc";
+          classTag.style.borderColor = "rgba(192, 132, 252, 0.35)";
+        }
+
+        metaRow.appendChild(classTag);
+
+        const passagesTag = document.createElement("span");
+        passagesTag.className = "pair-passages-tag";
+        const totalItems = pair.evidenceSummary?.totalCount || pair.matchingPassagesCount || 0;
+        passagesTag.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 12px; height: 12px;">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          </svg>
+          ${totalItems} Matching Evidence Item${totalItems !== 1 ? 's' : ''}
+        `;
+        metaRow.appendChild(passagesTag);
+
+        docsWrap.append(namesRow, metaRow);
+
+        // Score Wrap
+        const scoreWrap = document.createElement("div");
+        scoreWrap.className = "pair-score-wrap";
+
+        const scoreText = document.createElement("span");
+        scoreText.className = "pair-score-text";
+        scoreText.textContent = `${pair.similarityPercentage.toFixed(2)}%`;
+        if (pair.similarityPercentage >= 70) scoreText.style.color = "#38bdf8";
+        else if (pair.similarityPercentage >= 40) scoreText.style.color = "#c084fc";
+        else scoreText.style.color = "#94a3b8";
+
+        scoreWrap.appendChild(scoreText);
+
+        // Action Button: View Comparison
+        const actionsWrap = document.createElement("div");
+        actionsWrap.className = "pair-actions-wrap";
+
+        const inspectBtn = document.createElement("button");
+        inspectBtn.className = "btn-inspect-passages";
+        inspectBtn.type = "button";
+        inspectBtn.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          View Comparison
+        `;
+        inspectBtn.addEventListener("click", () => {
+          openPassageComparison(pair.documentAId, pair.documentBId, pair.fileName1, pair.fileName2);
+        });
+
+        actionsWrap.appendChild(inspectBtn);
+
+        card.append(rankBadge, docsWrap, scoreWrap, actionsWrap);
+        frag.appendChild(card);
+      });
+
+      rankedPairsContainer.appendChild(frag);
+    }
+  }
+
+  // Update pairs pagination
+  setText(pairsPageInfo, `Page ${pagination.current_page} of ${pagination.total_pages || 1}`);
+  if (pairsPrevBtn) pairsPrevBtn.disabled = !pagination.has_prev;
+  if (pairsNextBtn) pairsNextBtn.disabled = !pagination.has_next;
 }
 
 async function openScanReport() {
@@ -468,7 +1103,50 @@ async function openScanReport() {
       }
     }
 
-    // 3. Populate All Files Similarity Section
+    // 3. Populate Ranked Document Matches & Matching-Passage Evidence Section
+    const rankedMatches = payload.rankedMatches || [];
+    if (reportRankedMatchesContent) {
+      if (rankedMatches.length === 0) {
+        reportRankedMatchesContent.innerHTML = `<div class="report-empty-notice">No pairwise matches recorded for this scan.</div>`;
+      } else {
+        let rankedHtml = `
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th style="width: 50px;">Rank</th>
+                <th>Document 1</th>
+                <th>Document 2</th>
+                <th style="width: 110px;">Similarity</th>
+                <th style="width: 140px;">Classification</th>
+                <th>Matching Passage Evidence Excerpt</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
+        rankedMatches.slice(0, 20).forEach((item) => {
+          const pct = item.similarityPercentage || 0;
+          const scoreColor = pct >= 80 ? '#38bdf8' : (pct >= 50 ? '#c084fc' : '#94a3b8');
+          const passage = (item.matchingPassages && item.matchingPassages.length > 0)
+            ? `"${escapeHtml(item.matchingPassages[0].passageA || item.matchingPassages[0].passageB)}"`
+            : `<span style="color:#64748b; font-style:italic;">Identical or mathematical overlap</span>`;
+
+          rankedHtml += `
+            <tr>
+              <td style="font-weight: 700; color: #a78bfa;">#${item.rank}</td>
+              <td style="font-weight: 600;">${escapeHtml(item.fileName1)}</td>
+              <td style="font-weight: 600;">${escapeHtml(item.fileName2)}</td>
+              <td style="font-weight: 700; color: ${scoreColor};">${pct.toFixed(2)}%</td>
+              <td>${escapeHtml(item.classification || '--')}</td>
+              <td style="font-size: 0.8rem; color: #cbd5e1; max-width: 320px; white-space: normal;">${passage}</td>
+            </tr>
+          `;
+        });
+        rankedHtml += `</tbody></table>`;
+        reportRankedMatchesContent.innerHTML = rankedHtml;
+      }
+    }
+
+    // 4. Populate All Files Similarity Section
     if (reportAllFilesContent) {
       if (allFiles.length === 0) {
         reportAllFilesContent.innerHTML = `<div class="report-empty-notice">No document similarity records available.</div>`;
@@ -535,6 +1213,7 @@ async function loadDashboard() {
     }
 
     renderDashboard(payload);
+    loadRankedPairs();
 
   } catch (error) {
     setText(resultsError, error.message);
@@ -779,6 +1458,19 @@ async function startScan() {
   setText(metricCandidates, "0");
   setText(metricReduction, "0.0%");
 
+  // Reset Privacy & Storage Cleanup Tracker
+  if (privacyIcon) privacyIcon.textContent = "🔒";
+  if (privacyStatusTitle) privacyStatusTitle.textContent = "Privacy Protocol: Active Sandbox";
+  if (privacyStatusDesc) privacyStatusDesc.textContent = "Files held in temporary isolated sandbox. Auto-purged upon scan completion.";
+  if (privacyStatusBadge) {
+    privacyStatusBadge.textContent = "In Sandbox";
+    privacyStatusBadge.style.color = "#38bdf8";
+  }
+
+  currentPairsPage = 1;
+  currentPairsSearch = "";
+  if (pairsSearchInput) pairsSearchInput.value = "";
+
   try {
     // 1. Create a Scan Session
     const initResponse = await fetch(apiUrl("/api/scans"), {
@@ -879,6 +1571,15 @@ function pollScanStatus(scanId) {
           scanProgressDetails.textContent = `Indexing candidate comparisons: ${candidatePairs.toLocaleString()} pairs queued`;
         } else if (stage === "comparing") {
           scanProgressDetails.textContent = `Analyzing document similarities: ${completedComps.toLocaleString()} / ${totalPossible.toLocaleString()}`;
+        } else if (stage === "cleaning_up") {
+          scanProgressDetails.textContent = "Automatic cleanup: Purging temporary uploaded files from server storage...";
+          if (privacyIcon) privacyIcon.textContent = "🧹";
+          if (privacyStatusTitle) privacyStatusTitle.textContent = "Automatic Cleanup: In Progress";
+          if (privacyStatusDesc) privacyStatusDesc.textContent = "Deleting temporary uploaded files to ensure confidential zero document retention.";
+          if (privacyStatusBadge) {
+            privacyStatusBadge.textContent = "Purging...";
+            privacyStatusBadge.style.color = "#fbbf24";
+          }
         } else {
           scanProgressDetails.textContent = "Saving similarity analysis to repository...";
         }
@@ -891,7 +1592,8 @@ function pollScanStatus(scanId) {
         else if (stage === "preprocessing") baseProgress = 50;
         else if (stage === "fingerprinting") baseProgress = 55 + (processedDocs / (totalDocs || 1)) * 15;
         else if (stage === "candidate_generation") baseProgress = 75;
-        else if (stage === "comparing") baseProgress = 80 + (completedComps / (totalPossible || 1)) * 18;
+        else if (stage === "comparing") baseProgress = 80 + (completedComps / (totalPossible || 1)) * 15;
+        else if (stage === "cleaning_up") baseProgress = 96;
         else if (stage === "saving") baseProgress = 98;
         
         scanProgressBar.style.width = `${Math.min(100, Math.max(baseProgress, percentage))}%`;
@@ -901,8 +1603,23 @@ function pollScanStatus(scanId) {
       if (statusData.status === "completed") {
         clearInterval(pollInterval);
         if (scanProgressBar) scanProgressBar.style.width = "100%";
+
+        if (privacyIcon) privacyIcon.textContent = "✅";
+        if (privacyStatusTitle) privacyStatusTitle.textContent = "Privacy Verified: Storage Purged";
+        if (privacyStatusDesc) privacyStatusDesc.textContent = "All temporary uploaded files were successfully deleted.";
+        if (privacyStatusBadge) {
+          privacyStatusBadge.textContent = "Purged";
+          privacyStatusBadge.style.color = "#4ade80";
+        }
+
+        const cleanTime = statusData.cleanedUpAt ? formatDate(statusData.cleanedUpAt) : new Date().toLocaleTimeString();
+        if (privacyTimestampBadge) privacyTimestampBadge.textContent = `Purged at ${cleanTime}`;
+        if (privacyCleanupDetails) {
+          privacyCleanupDetails.textContent = statusData.privacyNotice || "All temporary uploaded documents have been permanently deleted from server storage. Only mathematical similarity fingerprints and matching passage evidence are retained.";
+        }
         
         await loadDashboard();
+        await loadRankedPairs();
         showLayer(4);
         startScanBtn.disabled = false;
       } else if (statusData.status === "failed") {

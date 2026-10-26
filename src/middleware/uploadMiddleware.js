@@ -25,11 +25,14 @@ const storage = multer.diskStorage({
   }
 });
 
-const allowedExtensions = new Set([".txt", ".pdf", ".docx"]);
+const allowedExtensions = new Set([".txt", ".pdf", ".docx", ".png", ".jpg", ".jpeg", ".webp"]);
 const allowedMimeTypes = new Set([
   "text/plain",
   "application/pdf",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "image/png",
+  "image/jpeg",
+  "image/webp"
 ]);
 
 function fileFilter(req, file, cb) {
@@ -38,7 +41,7 @@ function fileFilter(req, file, cb) {
   const extensionValid = allowedExtensions.has(extension);
 
   if (!mimeValid && !extensionValid) {
-    cb(new Error(`Unsupported file type: ${file.originalname}. Only TXT, PDF, and DOCX are allowed.`));
+    cb(new Error(`Unsupported file type: ${file.originalname}. Only TXT, PDF, DOCX, PNG, JPG, and WEBP are allowed.`));
     return;
   }
 
