@@ -15,6 +15,7 @@ router.get("/:scanId/report/pdf", scanController.getDownloadablePdfReport);
 router.get("/:scanId/pairs", scanController.getRankedPairs);
 router.get("/:scanId/ranked-pairs", scanController.getRankedPairs);
 router.get("/:scanId/passages", scanController.getPairPassages);
+router.get("/:scanId/evidence", scanController.getPairPassages);
 router.get("/:scanId/documents/:documentId/similarities", scanController.getDocumentSimilarities);
 router.get("/:scanId/results", scanController.getResults);
 router.get("/history", scanController.getHistory);

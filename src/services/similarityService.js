@@ -207,7 +207,20 @@ const similarityService = {
    * Produces exactly ONE overall similarity score.
    */
   async compareMultimodalPair(docA, docB, multiA, multiB, baseTextSim, matchingPassages = []) {
-    if (docA.sha256Hash && docB.sha256Hash && docA.sha256Hash === docB.sha256Hash) {
+    const isExactHash = Boolean(docA.sha256Hash && docB.sha256Hash && docA.sha256Hash === docB.sha256Hash);
+    const hasOtherModalities = Boolean(
+      (multiA?.images?.length || 0) > 0 || (multiB?.images?.length || 0) > 0 ||
+      (multiA?.tables?.length || 0) > 0 || (multiB?.tables?.length || 0) > 0
+    );
+
+    const isNormalizedExact = Boolean(
+      multiA?.text && multiB?.text && preprocessingService.areNormalizedTextsIdentical(multiA.text, multiB.text)
+    );
+
+    if (isExactHash || (isNormalizedExact && !hasOtherModalities)) {
+      if (!matchingPassages || matchingPassages.length === 0) {
+        matchingPassages = passageService.findMatchingPassages(multiA?.text || "", multiA?.text || "", { minSimilarity: 35, maxPassages: 10 });
+      }
       const exactImages = (multiA?.images || []).map((img, idx) => ({
         imageAId: img.imageId,
         imageBId: multiB?.images?.[idx]?.imageId || img.imageId,
@@ -215,12 +228,13 @@ const similarityService = {
         pageB: multiB?.images?.[idx]?.pageNumber || 1,
         similarity: 1.0,
         isExact: true,
-        comparisonMethod: "exact_sha256"
+        comparisonMethod: isExactHash ? "exact_sha256" : "exact_normalized_content"
       }));
 
       return {
         similarityScore: 1.0,
         similarityPercentage: 100.0,
+        isExactDuplicate: true,
         matchingPassages,
         evidence: { passages: matchingPassages, images: exactImages, code: [], tables: [] }
       };
@@ -233,8 +247,8 @@ const similarityService = {
       tables: []
     };
 
-    // 1. Text Similarity
-    const textSimilarity = baseTextSim;
+    // 1. Text Similarity (if text is normalized identical, text similarity is 1.0)
+    const textSimilarity = isNormalizedExact ? 1.0 : baseTextSim;
 
     // 2. Image Similarity
     let imageSimilarity = 0;
@@ -380,27 +394,66 @@ const similarityService = {
           let matchingPassages = [];
           let evidence = { passages: [], images: [], code: [], tables: [] };
 
-          if (docA.sha256Hash && docB.sha256Hash && docA.sha256Hash === docB.sha256Hash) {
+          const textA = textsMap.get(docA.documentId) || "";
+          const textB = textsMap.get(docB.documentId) || "";
+          const isExactHash = Boolean(docA.sha256Hash && docB.sha256Hash && docA.sha256Hash === docB.sha256Hash);
+          const isNormalizedExact = !isExactHash && Boolean(textA && textB && preprocessingService.areNormalizedTextsIdentical(textA, textB));
+
+          const multiA = multimodalMap.get(docA.documentId);
+          const multiB = multimodalMap.get(docB.documentId);
+          const hasOtherModalities = Boolean(
+            (multiA?.images?.length || 0) > 0 || (multiB?.images?.length || 0) > 0 ||
+            (multiA?.tables?.length || 0) > 0 || (multiB?.tables?.length || 0) > 0
+          );
+
+          if (isExactHash || (isNormalizedExact && !hasOtherModalities)) {
             similarityScore = 1.0;
             similarityPercentage = 100.00;
             exactDuplicates++;
-            const textA = textsMap.get(docA.documentId) || "";
             matchingPassages = passageService.findMatchingPassages(textA, textA, { minSimilarity: 40, maxPassages: 10 });
             evidence.passages = matchingPassages;
           } else {
             const jaccard = calculateJaccardSimilarity(setA, setB);
-            const baseJaccard = Number((jaccard * 100).toFixed(2)) / 100;
             exactComparisons++;
 
-            if (baseJaccard > 0) {
-              const textA = textsMap.get(docA.documentId) || "";
-              const textB = textsMap.get(docB.documentId) || "";
-              matchingPassages = passageService.findMatchingPassages(textA, textB, { minSimilarity: 35, maxPassages: 10 });
+            let containment = 0;
+            if (setA && setB && setA.size > 0 && setB.size > 0) {
+              const [smaller, larger] = setA.size < setB.size ? [setA, setB] : [setB, setA];
+              let inter = 0;
+              for (const s of smaller) {
+                if (larger.has(s)) inter++;
+              }
+              containment = inter / smaller.size;
             }
 
             const multiA = multimodalMap.get(docA.documentId);
             const multiB = multimodalMap.get(docB.documentId);
-            const mmResult = await this.compareMultimodalPair(docA, docB, multiA, multiB, baseJaccard, matchingPassages);
+            const pagesA = multiA?.pages || [];
+            const pagesB = multiB?.pages || [];
+
+            if (jaccard > 0 || (textA && textB)) {
+              matchingPassages = passageService.findMatchingPassages(textA, textB, {
+                minSimilarity: 35,
+                maxPassages: 10,
+                pagesA,
+                pagesB
+              });
+            }
+
+            let baseTextSim = jaccard;
+            if (matchingPassages.length > 0) {
+              const coverage = passageService.computePassageCoverage(textA, textB, matchingPassages);
+              if (containment >= 0.85) {
+                baseTextSim = Math.max(jaccard, containment * 0.65 + coverage.avgCoverage * 0.35);
+              } else if (coverage.maxCoverage >= 0.40) {
+                baseTextSim = Math.max(jaccard, jaccard * 0.45 + coverage.maxCoverage * 0.35 + containment * 0.20);
+              } else {
+                baseTextSim = Math.max(jaccard, jaccard * 0.70 + coverage.avgCoverage * 0.20 + containment * 0.10);
+              }
+            }
+            baseTextSim = Number(Math.max(0, Math.min(1.0, baseTextSim)).toFixed(4));
+
+            const mmResult = await this.compareMultimodalPair(docA, docB, multiA, multiB, baseTextSim, matchingPassages);
 
             similarityScore = mmResult.similarityScore;
             similarityPercentage = mmResult.similarityPercentage;
@@ -632,39 +685,71 @@ const similarityService = {
         let matchingPassages = [];
         let baseTextSim = 0.0;
 
-        if (candidate) {
-          if (candidate.isExactDuplicate) {
-            baseTextSim = 1.0;
-            exactDuplicates++;
-            const textA = textsMap.get(docA.documentId) || "";
-            matchingPassages = passageService.findMatchingPassages(textA, textA, { minSimilarity: 40, maxPassages: 10 });
-          } else {
-            const setA = await featureService.getFeature(scanId, candidate.docA);
-            const setB = await featureService.getFeature(scanId, candidate.docB);
-            const jaccard = calculateJaccardSimilarity(setA, setB);
-            baseTextSim = Number((jaccard * 100).toFixed(2)) / 100;
-            exactComparisons++;
+        const textA = textsMap.get(docA.documentId) || await featureService.getText(scanId, docA) || "";
+        const textB = textsMap.get(docB.documentId) || await featureService.getText(scanId, docB) || "";
+        const isNormalizedExact = Boolean(textA && textB && preprocessingService.areNormalizedTextsIdentical(textA, textB));
 
-            if (baseTextSim > 0) {
-              const textA = textsMap.get(docA.documentId) || await featureService.getText(scanId, docA);
-              const textB = textsMap.get(docB.documentId) || await featureService.getText(scanId, docB);
-              matchingPassages = passageService.findMatchingPassages(textA, textB, { minSimilarity: 35, maxPassages: 10 });
+        const multiA = multimodalMap.get(docA.documentId);
+        const multiB = multimodalMap.get(docB.documentId);
+        const hasOtherModalities = Boolean(
+          (multiA?.images?.length || 0) > 0 || (multiB?.images?.length || 0) > 0 ||
+          (multiA?.tables?.length || 0) > 0 || (multiB?.tables?.length || 0) > 0
+        );
+
+        if (candidate?.isExactDuplicate || (isNormalizedExact && !hasOtherModalities)) {
+          baseTextSim = 1.0;
+          exactDuplicates++;
+          matchingPassages = passageService.findMatchingPassages(textA, textA, { minSimilarity: 40, maxPassages: 10 });
+        } else if (candidate) {
+          const setA = await featureService.getFeature(scanId, candidate.docA);
+          const setB = await featureService.getFeature(scanId, candidate.docB);
+          const jaccard = calculateJaccardSimilarity(setA, setB);
+          exactComparisons++;
+
+          const pagesA = multiA?.pages || [];
+          const pagesB = multiB?.pages || [];
+
+          if (jaccard > 0 || (textA && textB)) {
+            matchingPassages = passageService.findMatchingPassages(textA, textB, {
+              minSimilarity: 35,
+              maxPassages: 10,
+              pagesA,
+              pagesB
+            });
+          }
+
+          let containment = 0;
+          if (setA && setB && setA.size > 0 && setB.size > 0) {
+            const [smaller, larger] = setA.size < setB.size ? [setA, setB] : [setB, setA];
+            let inter = 0;
+            for (const s of smaller) {
+              if (larger.has(s)) inter++;
+            }
+            containment = inter / smaller.size;
+          }
+
+          baseTextSim = jaccard;
+          if (matchingPassages.length > 0) {
+            const coverage = passageService.computePassageCoverage(textA, textB, matchingPassages);
+            if (containment >= 0.85) {
+              baseTextSim = Math.max(jaccard, containment * 0.65 + coverage.avgCoverage * 0.35);
+            } else if (coverage.maxCoverage >= 0.40) {
+              baseTextSim = Math.max(jaccard, jaccard * 0.45 + coverage.maxCoverage * 0.35 + containment * 0.20);
+            } else {
+              baseTextSim = Math.max(jaccard, jaccard * 0.70 + coverage.avgCoverage * 0.20 + containment * 0.10);
             }
           }
+          baseTextSim = Number(Math.max(0, Math.min(1.0, baseTextSim)).toFixed(4));
         } else {
           // Fast MinHash similarity estimation for non-candidate pairs
           const estimated = estimateMinHashSimilarity(docA.minhashSignature, docB.minhashSignature);
           baseTextSim = Number((estimated * 100).toFixed(2)) / 100;
 
           if (baseTextSim >= 0.15) {
-            const textA = textsMap.get(docA.documentId) || await featureService.getText(scanId, docA);
-            const textB = textsMap.get(docB.documentId) || await featureService.getText(scanId, docB);
             matchingPassages = passageService.findMatchingPassages(textA, textB, { minSimilarity: 35, maxPassages: 10 });
           }
         }
 
-        const multiA = multimodalMap.get(docA.documentId);
-        const multiB = multimodalMap.get(docB.documentId);
         const mmResult = await this.compareMultimodalPair(docA, docB, multiA, multiB, baseTextSim, matchingPassages);
 
         similarityScore = mmResult.similarityScore;

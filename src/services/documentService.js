@@ -101,7 +101,7 @@ const documentService = {
    * @param {object} doc 
    * @returns {Promise<string>} Inserted document identifier
    */
-  async createDocument({ scanId, filename, fileType, fileSize, filePath, sha256Hash, contentHash, textLength, tokenCount }) {
+  async createDocument({ scanId, filename, fileType, fileSize, filePath, sha256Hash, contentHash, normalizedHash, textLength, tokenCount }) {
     const db = getDb();
     const documentId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
 
@@ -113,6 +113,7 @@ const documentService = {
       fileSize,
       filePath,
       sha256Hash: sha256Hash || contentHash,
+      normalizedHash: normalizedHash || null,
       textLength,
       tokenCount,
       status: "processed",

@@ -228,15 +228,8 @@ const reportDuplicateContent = document.getElementById("reportDuplicateContent")
 const reportRankedMatchesContent = document.getElementById("reportRankedMatchesContent");
 const reportAllFilesContent = document.getElementById("reportAllFilesContent");
 
-// Feature 4: Privacy & Automatic Cleanup Elements
-const scanPrivacyCard = document.getElementById("scanPrivacyCard");
-const privacyIcon = document.getElementById("privacyIcon");
-const privacyStatusTitle = document.getElementById("privacyStatusTitle");
-const privacyStatusDesc = document.getElementById("privacyStatusDesc");
-const privacyStatusBadge = document.getElementById("privacyStatusBadge");
-const resultsPrivacyBanner = document.getElementById("resultsPrivacyBanner");
-const privacyCleanupDetails = document.getElementById("privacyCleanupDetails");
-const privacyTimestampBadge = document.getElementById("privacyTimestampBadge");
+// Feature 4: Storage Cleanup & Lifecycle State
+
 
 // Feature 2: View Switcher & Smart Ranking Elements
 const tabRankedPairs = document.getElementById("tabRankedPairs");
@@ -541,7 +534,7 @@ async function openDocumentDetail(documentId) {
           const passageBtn = document.createElement("button");
           passageBtn.className = "btn-inspect-passages";
           passageBtn.type = "button";
-          passageBtn.innerHTML = `Inspect Passages &rarr;`;
+          passageBtn.innerHTML = `View Evidence &rarr;`;
           passageBtn.addEventListener("click", (e) => {
             e.stopPropagation();
             openPassageComparison(doc.documentId, comp.comparedWithId, doc.filename, comp.comparedWithName);
@@ -561,8 +554,12 @@ async function openDocumentDetail(documentId) {
   }
 }
 
+let isEvidenceLoading = false;
+
 async function openPassageComparison(docAId, docBId, docAName, docBName) {
   if (!currentScanId || !docAId || !docBId) return;
+  if (isEvidenceLoading) return;
+  isEvidenceLoading = true;
 
   try {
     if (passageModalHeading) {
@@ -572,17 +569,22 @@ async function openPassageComparison(docAId, docBId, docAName, docBName) {
       passageModalMeta.textContent = "Loading matching passages and overlap evidence...";
     }
     if (passageCardsList) {
-      passageCardsList.innerHTML = "<p style='color:#94a3b8; font-family:\"Space Grotesk\",sans-serif; text-align:center; padding:2rem;'>Analyzing document sentences and extracting overlapping passages...</p>";
+      passageCardsList.innerHTML = `
+        <div style="text-align:center; padding:3rem 1rem; color:#94a3b8; font-family:'Space Grotesk',sans-serif;">
+          <div style="display:inline-block; width:28px; height:28px; border:3px solid rgba(56,189,248,0.2); border-top-color:#38bdf8; border-radius:50%; animation:spin 0.8s linear infinite; margin-bottom:12px;"></div>
+          <div>Retrieving verified matching evidence and passage alignments...</div>
+        </div>
+      `;
     }
     if (passageComparisonModal) {
       passageComparisonModal.style.display = "flex";
     }
 
-    const res = await fetch(apiUrl(`/api/scans/${currentScanId}/passages?docA=${encodeURIComponent(docAId)}&docB=${encodeURIComponent(docBId)}`));
+    const res = await fetch(apiUrl(`/api/scans/${currentScanId}/evidence?docA=${encodeURIComponent(docAId)}&docB=${encodeURIComponent(docBId)}`));
     const data = await res.json();
 
     if (!res.ok) {
-      throw new Error(data.message || "Failed to load matching passages.");
+      throw new Error(data.message || "Failed to load matching evidence.");
     }
 
     currentPassageData = data;
@@ -610,8 +612,24 @@ async function openPassageComparison(docAId, docBId, docAName, docBName) {
 
   } catch (error) {
     if (passageCardsList) {
-      passageCardsList.innerHTML = `<p style="color:#ef4444; padding:1.5rem; text-align:center;">Error: ${escapeHtml(error.message)}</p>`;
+      passageCardsList.innerHTML = `
+        <div style="text-align: center; padding: 2.5rem 1rem; color: #ef4444; font-family: 'Space Grotesk', sans-serif;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 36px; height: 36px; margin: 0 auto 12px; display: block; color: #ef4444;">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          <div style="font-weight: 700; margin-bottom: 6px;">Failed to Load Evidence</div>
+          <div style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 16px;">${escapeHtml(error.message)}</div>
+          <button id="retryEvidenceBtn" class="btn btn-secondary btn-sm" type="button">Retry</button>
+        </div>
+      `;
+      document.getElementById("retryEvidenceBtn")?.addEventListener("click", () => {
+        openPassageComparison(docAId, docBId, docAName, docBName);
+      });
     }
+  } finally {
+    isEvidenceLoading = false;
   }
 }
 
@@ -665,20 +683,28 @@ function renderPassageCards() {
       indexBadge.textContent = `Matching Passage #${p.index || idx + 1}`;
 
       const overlapBadge = document.createElement("span");
-      overlapBadge.className = "passage-overlap-badge high";
-      overlapBadge.textContent = "TEXT PASSAGE MATCH";
+      const sim = typeof p.similarity === "number" ? p.similarity : 0;
+      const badgeLevel = sim >= 95 ? "exact" : (sim >= 80 ? "high" : "moderate");
+      overlapBadge.className = `passage-overlap-badge ${badgeLevel}`;
+
+      const matchTypeLabel = p.matchType ? p.matchType.toUpperCase() : "TEXT PASSAGE MATCH";
+      const overlapPct = typeof p.similarity === "number" ? ` • ${p.similarity.toFixed(1)}% OVERLAP` : "";
+      overlapBadge.textContent = `${matchTypeLabel}${overlapPct}`;
 
       header.append(indexBadge, overlapBadge);
 
       const sbs = document.createElement("div");
       sbs.className = "passage-side-by-side";
 
+      const locA = p.pageA ? ` (Page ${p.pageA})` : (p.offsetA !== null && p.offsetA !== undefined ? ` (Offset ${p.offsetA})` : "");
+      const locB = p.pageB ? ` (Page ${p.pageB})` : (p.offsetB !== null && p.offsetB !== undefined ? ` (Offset ${p.offsetB})` : "");
+
       const colA = document.createElement("div");
       colA.className = "passage-col";
       colA.innerHTML = `
         <div class="passage-col-title">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path></svg>
-          <span>${escapeHtml(currentPassageData.documentA.filename)}</span>
+          <span>${escapeHtml(currentPassageData.documentA.filename)}${escapeHtml(locA)}</span>
         </div>
         <div class="passage-text-content">${p.highlightedA || escapeHtml(p.passageA)}</div>
       `;
@@ -688,7 +714,7 @@ function renderPassageCards() {
       colB.innerHTML = `
         <div class="passage-col-title">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path></svg>
-          <span>${escapeHtml(currentPassageData.documentB.filename)}</span>
+          <span>${escapeHtml(currentPassageData.documentB.filename)}${escapeHtml(locB)}</span>
         </div>
         <div class="passage-text-content">${p.highlightedB || escapeHtml(p.passageB)}</div>
       `;
@@ -697,7 +723,10 @@ function renderPassageCards() {
 
       const footer = document.createElement("div");
       footer.className = "passage-card-footer";
-      footer.innerHTML = `<span class="matched-words-label">Evidence:</span> <span class="matched-word-chip">Matching prose passages</span>`;
+      const chips = Array.isArray(p.matchedWords) && p.matchedWords.length > 0
+        ? p.matchedWords.slice(0, 8).map(w => `<span class="matched-word-chip">${escapeHtml(w)}</span>`).join(" ")
+        : `<span class="matched-word-chip">Matching prose passages</span>`;
+      footer.innerHTML = `<span class="matched-words-label">Evidence:</span> ${chips}`;
 
       card.append(header, sbs, footer);
       frag.appendChild(card);
@@ -993,7 +1022,7 @@ function renderRankedPairs(data) {
             <circle cx="11" cy="11" r="8"></circle>
             <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
           </svg>
-          View Comparison
+          View Evidence
         `;
         inspectBtn.addEventListener("click", () => {
           openPassageComparison(pair.documentAId, pair.documentBId, pair.fileName1, pair.fileName2);
@@ -1458,15 +1487,6 @@ async function startScan() {
   setText(metricCandidates, "0");
   setText(metricReduction, "0.0%");
 
-  // Reset Privacy & Storage Cleanup Tracker
-  if (privacyIcon) privacyIcon.textContent = "🔒";
-  if (privacyStatusTitle) privacyStatusTitle.textContent = "Privacy Protocol: Active Sandbox";
-  if (privacyStatusDesc) privacyStatusDesc.textContent = "Files held in temporary isolated sandbox. Auto-purged upon scan completion.";
-  if (privacyStatusBadge) {
-    privacyStatusBadge.textContent = "In Sandbox";
-    privacyStatusBadge.style.color = "#38bdf8";
-  }
-
   currentPairsPage = 1;
   currentPairsSearch = "";
   if (pairsSearchInput) pairsSearchInput.value = "";
@@ -1572,14 +1592,7 @@ function pollScanStatus(scanId) {
         } else if (stage === "comparing") {
           scanProgressDetails.textContent = `Analyzing document similarities: ${completedComps.toLocaleString()} / ${totalPossible.toLocaleString()}`;
         } else if (stage === "cleaning_up") {
-          scanProgressDetails.textContent = "Automatic cleanup: Purging temporary uploaded files from server storage...";
-          if (privacyIcon) privacyIcon.textContent = "🧹";
-          if (privacyStatusTitle) privacyStatusTitle.textContent = "Automatic Cleanup: In Progress";
-          if (privacyStatusDesc) privacyStatusDesc.textContent = "Deleting temporary uploaded files to ensure confidential zero document retention.";
-          if (privacyStatusBadge) {
-            privacyStatusBadge.textContent = "Purging...";
-            privacyStatusBadge.style.color = "#fbbf24";
-          }
+          scanProgressDetails.textContent = "Processing completed. Cleaning up temporary artifacts...";
         } else {
           scanProgressDetails.textContent = "Saving similarity analysis to repository...";
         }
@@ -1603,20 +1616,6 @@ function pollScanStatus(scanId) {
       if (statusData.status === "completed") {
         clearInterval(pollInterval);
         if (scanProgressBar) scanProgressBar.style.width = "100%";
-
-        if (privacyIcon) privacyIcon.textContent = "✅";
-        if (privacyStatusTitle) privacyStatusTitle.textContent = "Privacy Verified: Storage Purged";
-        if (privacyStatusDesc) privacyStatusDesc.textContent = "All temporary uploaded files were successfully deleted.";
-        if (privacyStatusBadge) {
-          privacyStatusBadge.textContent = "Purged";
-          privacyStatusBadge.style.color = "#4ade80";
-        }
-
-        const cleanTime = statusData.cleanedUpAt ? formatDate(statusData.cleanedUpAt) : new Date().toLocaleTimeString();
-        if (privacyTimestampBadge) privacyTimestampBadge.textContent = `Purged at ${cleanTime}`;
-        if (privacyCleanupDetails) {
-          privacyCleanupDetails.textContent = statusData.privacyNotice || "All temporary uploaded documents have been permanently deleted from server storage. Only mathematical similarity fingerprints and matching passage evidence are retained.";
-        }
         
         await loadDashboard();
         await loadRankedPairs();

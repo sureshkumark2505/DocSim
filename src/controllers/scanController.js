@@ -69,6 +69,7 @@ const scanController = {
 
           // Tokenize to find token count (no shingle storing in DB)
           const tokens = preprocessingService.tokenize(text);
+          const normalizedHash = preprocessingService.computeNormalizedHash(text);
 
           // Save document metadata only
           const documentId = await documentService.createDocument({
@@ -78,6 +79,7 @@ const scanController = {
             fileSize: file.size,
             filePath: file.path,
             sha256Hash: hash,
+            normalizedHash,
             textLength,
             tokenCount: tokens.length
           });
@@ -324,6 +326,7 @@ const scanController = {
 
   /**
    * GET /api/scans/:scanId/passages
+   * GET /api/scans/:scanId/evidence
    * Display matching sentences or text passages side by side, highlighting overlapping content.
    */
   async getPairPassages(req, res) {
@@ -331,16 +334,36 @@ const scanController = {
     const docA = req.query.docA || req.query.documentAId;
     const docB = req.query.docB || req.query.documentBId;
 
+    if (!scanId || typeof scanId !== "string" || !scanId.trim()) {
+      return res.status(400).json({ success: false, message: "Valid scanId parameter is required." });
+    }
+
     if (!docA || !docB) {
       return res.status(400).json({ success: false, message: "Both docA and docB parameters are required." });
     }
 
+    if (String(docA).trim() === String(docB).trim()) {
+      return res.status(400).json({ success: false, message: "Cannot compare a document with itself." });
+    }
+
     try {
-      const passageData = await resultService.getPairPassages(scanId, docA, docB);
+      const scan = await documentService.getScan(scanId);
+      if (!scan) {
+        return res.status(404).json({ success: false, message: `Scan ${scanId} not found.` });
+      }
+
+      const passageData = await resultService.getPairPassages(scanId, String(docA).trim(), String(docB).trim());
+      if (!passageData) {
+        return res.status(404).json({ success: false, message: "Comparison between specified documents not found in this scan." });
+      }
+
       res.status(200).json(passageData);
     } catch (error) {
-      console.error("Error fetching matching passages:", error);
-      res.status(500).json({ success: false, message: "Failed to fetch matching passages", error: error.message });
+      if (error.message && error.message.includes("not found")) {
+        return res.status(404).json({ success: false, message: error.message });
+      }
+      console.error("Error fetching matching evidence:", error.message);
+      res.status(500).json({ success: false, message: "Failed to fetch matching evidence", error: error.message });
     }
   },
 

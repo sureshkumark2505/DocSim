@@ -54,8 +54,8 @@ By combining a **High-Performance Python SIMD Acceleration Engine (NumPy + SciPy
  1. Document Ingestion                    ▼
     [ PDF / DOCX / TXT ] ───► Multer Middleware (Limit & MIME Validation)
                                           │
- 2. Single-Pass Extraction                ▼
-    [ Text Extraction ] ────► SHA-256 Content Hashing (Identical Document Bypass)
+ 2. Single-Pass Extraction & OCR analysis               ▼
+    [ Text and image Extraction ] ────► SHA-256 Content Hashing (Identical Document Bypass)
                                           │
  3. Preprocessing                         ▼
     [ Tokenization ] ───────► Word-Level k-Shingling (k = 5)
@@ -408,10 +408,10 @@ npm run benchmark
 
 ## 🧪 Testing
 
-The repository features comprehensive integration and unit test suites utilizing Node.js native test runner:
+The repository features comprehensive integration and unit test suites utilizing the Node.js native test runner (108 tests across 13 test suites, 100% passing):
 
 ```bash
-# Run complete test suite (Level 1, Level 2, Dashboard & Reports)
+# Run complete test suite (all 13 test suites)
 npm test
 
 # Run Level 1 scan & API tests
@@ -422,7 +422,39 @@ npm run test:l2
 
 # Run dashboard & aggregation tests
 npm run test:dashboard
+
+# Run multimodal extraction & similarity tests
+npm run test:multimodal
+
+# Run PDF report layout & pagination tests
+node -r dotenv/config --test tests/pdf_report.test.js
+
+# Run plagiarism detection engine tests (all 14 scenarios)
+node -r dotenv/config --test tests/plagiarism_engine.test.js
+
+# Run security, storage lifecycle & XSS tests
+node -r dotenv/config --test tests/security_lifecycle.test.js
+
+# Run Python engine benchmark
+npm run py:test
 ```
+
+---
+
+## 🔍 Plagiarism Detection Engine & Evidence Architecture
+
+### Detection Pipeline
+
+1. **Document Ingestion & Validation**: Checks MIME types, magic numbers, file size limits (50MB/file), and safe temporary storage.
+2. **Text Normalization**: Unicode NFKC normalization, standardized line breaks (`\r\n` $\rightarrow$ `\n`), collapsed whitespace, and trimmed lines.
+3. **Exact Duplicate Fast-Path**: Cryptographic SHA-256 raw file hashing and normalized content hashing. Exact normalized duplicates receive guaranteed 100.00% similarity.
+4. **Sentence & Passage Alignment**: Splits text into grammatical sentence segments while tracking exact source character offsets and page numbers.
+5. **False-Positive Boilerplate Suppression**: Suppresses generic academic and administrative boilerplate (e.g., "Table of Contents", "Introduction", "References", "Declaration of Authorship").
+6. **Modified Copying Detection**: Blends content Jaccard, token containment, and ordering to identify word substitutions, insertions/deletions, and reordered paragraphs.
+7. **Unified Overall Scoring**: Produces **exactly ONE overall similarity percentage** per document pair. Modality mass weighting balances text, code, images, and tables without exposing sub-percentages.
+8. **Evidence Generation**: Extracts real matching passages with exact character offsets (`offsetA`, `offsetB`) and page numbers (`pageA`, `pageB`), highlighted safely using escaped HTML `<mark>` tags.
+9. **Interactive Side-by-Side Viewer**: Responsive modal showing Doc A vs Doc B side-by-side on desktop and stacked on mobile, with loading, empty, and retry error states.
+10. **Paginated PDF Report**: Generates professional multi-page downloadable PDF reports with dynamic row heights, wrapped filenames, continuation table headers, and no unwanted privacy banners.
 
 ---
 

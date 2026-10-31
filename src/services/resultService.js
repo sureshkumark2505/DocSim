@@ -125,8 +125,9 @@ async function aggregateScanData(scanId) {
     docMap.set(doc.documentId, doc);
   }
 
-  // 3. Connect SHA-256 identical documents
+  // 3. Connect SHA-256 and normalized text identical documents
   const shaMap = new Map();
+  const normHashMap = new Map();
   for (const doc of allDocs) {
     if (doc.sha256Hash) {
       if (!shaMap.has(doc.sha256Hash)) {
@@ -134,8 +135,21 @@ async function aggregateScanData(scanId) {
       }
       shaMap.get(doc.sha256Hash).push(doc.documentId);
     }
+    if (doc.normalizedHash) {
+      if (!normHashMap.has(doc.normalizedHash)) {
+        normHashMap.set(doc.normalizedHash, []);
+      }
+      normHashMap.get(doc.normalizedHash).push(doc.documentId);
+    }
   }
   for (const [, group] of shaMap) {
+    if (group.length > 1) {
+      for (let i = 1; i < group.length; i++) {
+        dsu.union(group[0], group[i]);
+      }
+    }
+  }
+  for (const [, group] of normHashMap) {
     if (group.length > 1) {
       for (let i = 1; i < group.length; i++) {
         dsu.union(group[0], group[i]);
@@ -847,6 +861,10 @@ const resultService = {
       index: index + 1,
       passageA: p.passageA,
       passageB: p.passageB,
+      pageA: p.pageA || null,
+      pageB: p.pageB || null,
+      offsetA: p.offsetA !== undefined ? p.offsetA : null,
+      offsetB: p.offsetB !== undefined ? p.offsetB : null,
       highlightedA: passageService.highlightMatchedTokens(p.passageA, p.matchedWords),
       highlightedB: passageService.highlightMatchedTokens(p.passageB, p.matchedWords),
       similarity: p.similarity,

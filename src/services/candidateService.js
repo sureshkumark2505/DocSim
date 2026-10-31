@@ -93,6 +93,42 @@ const candidateService = {
       }
     }
 
+    // 1b. Add all normalized content exact duplicates as candidate pairs
+    const normalizedGroups = new Map();
+    for (const doc of documents) {
+      const nHash = doc.normalizedHash || doc.contentHash;
+      if (nHash) {
+        let group = normalizedGroups.get(nHash);
+        if (!group) {
+          group = [];
+          normalizedGroups.set(nHash, group);
+        }
+        group.push(doc.documentId);
+      }
+    }
+
+    for (const [, group] of normalizedGroups) {
+      if (group.length > 1) {
+        for (let i = 0; i < group.length; i++) {
+          for (let j = i + 1; j < group.length; j++) {
+            const idA = group[i] < group[j] ? group[i] : group[j];
+            const idB = group[i] < group[j] ? group[j] : group[i];
+            const pairKey = `${idA}::${idB}`;
+
+            if (!uniquePairKeys.has(pairKey)) {
+              uniquePairKeys.add(pairKey);
+              candidatePairs.push({
+                docA: docMap.get(idA),
+                docB: docMap.get(idB),
+                isExactDuplicate: true
+              });
+              exactDuplicateCount++;
+            }
+          }
+        }
+      }
+    }
+
     // 2. Perform LSH Bucketing
     const buckets = bucketDocuments(documents, bands, rows);
 

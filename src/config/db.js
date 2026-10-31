@@ -182,6 +182,7 @@ async function initDbCollectionsAndIndexes(database) {
     const documents = database.collection("documents");
     await documents.createIndex({ scanId: 1 });
     await documents.createIndex({ sha256Hash: 1 });
+    await documents.createIndex({ normalizedHash: 1 });
     await documents.createIndex({ scanId: 1, documentId: 1 });
 
     // 3. similarity_results collection
